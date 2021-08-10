@@ -82,5 +82,4 @@ class ActionRecognitionModule(pl.LightningModule):
     # ##### OPTIMIZER #####
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.classifier.parameters(),
-                                lr=self.hparams.lr)
+        return torch.optim.Adam(self.model.parameters(), lr=self.hparams.lr)

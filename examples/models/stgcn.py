@@ -5,7 +5,7 @@ from skeletonactionrecognition.graphs import SpatioTemporalGraphConvolution
 
 class STGCN(torch.nn.Module):
     @staticmethod
-    def add_model_specific_args(parent_parser):
+    def add_stgcn_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("ST-GCN specific")
         parser.add_argument('--edge_importance_weighting',
                             action='store_true',
@@ -61,7 +61,8 @@ class STGCN(torch.nn.Module):
         self.fully_connected = torch.nn.Conv2d(256, num_classes, kernel_size=1)
 
     def forward(self, x):
-        # TODO: with NTU I'll have a person dimension here to reduce
+        # TODO: This just discards the person dimension
+        x = x[:, 0]
         batch, channels, frames, nodes = x.size()
 
         # data normalization
