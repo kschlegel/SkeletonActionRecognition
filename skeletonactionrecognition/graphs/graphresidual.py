@@ -18,7 +18,7 @@ class GraphResidual(torch.nn.Module):
             The number of input channels per node
         out_channels : int
             The number of output channels per node
-        temporal_stride : int
+        stride : int
             The stride used in the graph convolution
         """
         super().__init__()

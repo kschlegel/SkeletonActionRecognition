@@ -47,7 +47,8 @@ class GraphConvolution(torch.nn.Module):
             graph_options.
         graph_options : dict
             Dictionary of options to be used as parameters when creating the
-            graph for this convolutional layer.
+            graph for this convolutional layer. See Graph class constructor for
+            list of possible options and values.
             Ignored if graph instance was passed in.
         temporal_kernel_size : int, optional (default is 1)
             Size of the convolutional kernel in the frame dimension.
@@ -138,6 +139,8 @@ class GraphConvolution(torch.nn.Module):
         if len(A.shape) == 3:
             A_shape = "snm"
         elif len(A.shape) == 4:
+            # If a data dependent component is used in the adjacency matrix
+            # then we have one matrix per batch element and per subset
             A_shape = "bsnm"
         else:
             raise Exception("Invalid adjacency matrix shape")

@@ -1,4 +1,5 @@
 import torch
+from skeletonactionrecognition.datatransforms import Person2Batch
 from skeletonactionrecognition.normalisations import ChannelwiseBatchNorm
 from skeletonactionrecognition.graphs import SpatioTemporalGraphConvolution
 
@@ -22,6 +23,7 @@ class STGCN(torch.nn.Module):
 
         self.data_batch_norm = ChannelwiseBatchNorm(in_channels=3,
                                                     landmarks=25)
+        self.person2batch = Person2Batch(person_dimension=1, num_persons=2)
 
         temporal_kernel_size = 9
         self.st_gcn_networks = torch.nn.ModuleList((
@@ -61,22 +63,26 @@ class STGCN(torch.nn.Module):
         self.fully_connected = torch.nn.Conv2d(256, num_classes, kernel_size=1)
 
     def forward(self, x):
-        # TODO: This just discards the person dimension
-        x = x[:, 0]
+        # Move persons into the batch dimension
+        x = self.person2batch(x)
+
         batch, channels, frames, nodes = x.size()
 
-        # data normalization
+        # Normalise data
         x = self.data_batch_norm(x)
 
-        # forwad
+        # Forwad
         for gcn in self.st_gcn_networks:
             x = gcn(x)
 
-        # global pooling
+        # Global pooling
         x = torch.nn.functional.avg_pool2d(x, x.size()[2:])
         x = x.view(batch, -1, 1, 1)
 
-        # prediction
+        # Aggregate results for people of each batch element
+        x = self.person2batch.extract_persons(x)
+
+        # Predict
         x = self.fully_connected(x)
         x = x.view(x.size(0), -1)
 

@@ -41,6 +41,11 @@ class Graph(torch.nn.Module):
         graph_partition_strategy : str, Optional (default is 'uniform)
             One of ('uniform','distance','spatial') - Graph partition strategy
             defining the weight function
+        directed_graph : bool, Optional (default is False)
+            Whether to use a directed or undirected graph. If set to True, the
+            pairs of integers in graph_connections are interpreted as the first
+            integer denoting the start of an edge and the second integer its
+            end.
         learnable_adjacency : bool, optional (default is False)
             Whether to include a learnable component in the adjacency matrix
         data_dependent_adjacency : bool, optinal (default is False)

@@ -50,7 +50,8 @@ class SpatioTemporalGraphConvolution(torch.nn.Module):
             graph_options.
         graph_options : dict
             Dictionary of options to be used as parameters when creating the
-            graph for this convolutional layer.
+            graph for this convolutional layer. See Graph class constructor for
+            list of possible options and values.
             Ignored if graph instance was passed in.
         temporal_stride : int, optional (default is 1)
             The stride of the temporal convolution
