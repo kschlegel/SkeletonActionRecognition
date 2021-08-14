@@ -2,7 +2,7 @@
 This implementation is based on
 https://github.com/yysijie/st-gcn/blob/master/net/utils/graph.py
 """
-from typing import List, Union, Tuple, Optional
+from typing import List, Tuple, Optional
 
 import torch
 
@@ -10,7 +10,7 @@ import torch
 class Graph(torch.nn.Module):
     def __init__(self,
                  graph_layout: Optional[str] = 'kinectv2',
-                 graph_connections: Union[List[Tuple[int]], None] = None,
+                 graph_connections: Optional[List[Tuple[int, int]]] = None,
                  center_node: Optional[int] = None,
                  graph_partition_strategy: str = 'uniform',
                  directed_graph: bool = False,
@@ -120,7 +120,7 @@ class Graph(torch.nn.Module):
                                     kernel_size=1))
 
         # Optional learnable importance weighting for each edge in the graph
-        self.edge_importance: Union[torch.Tensor, None]
+        self.edge_importance: Optional[torch.Tensor]
         if edge_importance_weighting:
             print("Add edge importance")
             self.edge_importance = torch.nn.Parameter(torch.ones(
@@ -177,7 +177,7 @@ class Graph(torch.nn.Module):
 
     def _compute_edges(self,
                        graph_layout: Optional[str] = None,
-                       connections: Union[List[Tuple[int]], None] = None,
+                       connections: Optional[List[Tuple[int, int]]] = None,
                        center_node: Optional[int] = None) -> None:
         """
         Computes the list of edges in the graph.

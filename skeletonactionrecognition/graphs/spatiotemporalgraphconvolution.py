@@ -2,7 +2,7 @@
 This implementation is strongly based on
 https://github.com/yysijie/st-gcn/blob/master/net/st_gcn.py
 """
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import torch
 
@@ -27,7 +27,7 @@ class SpatioTemporalGraphConvolution(torch.nn.Module):
                  out_channels: int,
                  temporal_kernel_size: int,
                  graph: Optional[Graph] = None,
-                 graph_options: Optional[dict] = {},
+                 graph_options: Dict[str, Any] = {},
                  temporal_stride: int = 1,
                  dropout_p: float = 0,
                  edge_importance_weighting: bool = False,
@@ -66,9 +66,6 @@ class SpatioTemporalGraphConvolution(torch.nn.Module):
         """
         super().__init__()
 
-        #assert temporal_kernel_size % 2 == 1
-        #temporal_padding = ((temporal_kernel_size - 1) // 2, 0)
-
         self.gcn = GraphConvolution(
             in_channels,
             out_channels,
@@ -82,17 +79,6 @@ class SpatioTemporalGraphConvolution(torch.nn.Module):
                                             out_channels=out_channels,
                                             kernel_size=temporal_kernel_size,
                                             stride=temporal_stride)
-        # torch.nn.Sequential(
-        #     torch.nn.Conv2d(
-        #         out_channels,
-        #         out_channels,
-        #         (temporal_kernel_size, 1),
-        #         (temporal_stride, 1),
-        #         temporal_padding,
-        #     ),
-        #     torch.nn.BatchNorm2d(out_channels),
-        #     torch.nn.Dropout(dropout_p, inplace=True),
-        # )
 
         self.dropout = torch.nn.Dropout(dropout_p, inplace=True)
 

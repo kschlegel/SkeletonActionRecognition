@@ -3,9 +3,9 @@ import argparse
 import pytorch_lightning as pl
 
 from datamodule import SkeletonDataModule
-from models.actionrecognitionmodule import ActionRecognitionModule
-from models.stgcn import STGCN
-from models.agcn import AGCN
+from models.actionrecognitionmodule import ActionRecognitionModule  # type: ignore
+from models.stgcn import STGCN  # type: ignore
+from models.agcn import AGCN  # type: ignore
 
 
 def parse_arguments():

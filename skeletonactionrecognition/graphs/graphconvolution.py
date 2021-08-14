@@ -2,8 +2,7 @@
 This implementation is strongly based on
 https://github.com/yysijie/st-gcn/blob/master/net/utils/tgcn.py
 """
-
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import torch
 
@@ -24,7 +23,7 @@ class GraphConvolution(torch.nn.Module):
                  in_channels: int,
                  out_channels: int,
                  graph: Optional[Graph] = None,
-                 graph_options: Optional[dict] = {},
+                 graph_options: Dict[str, Any] = {},
                  temporal_kernel_size: int = 1,
                  temporal_stride: int = 1,
                  temporal_padding: int = 0,
@@ -76,7 +75,7 @@ class GraphConvolution(torch.nn.Module):
                 }
             else:
                 dimensions = {}
-            self.graph = Graph(**graph_options, **dimensions)
+            self.graph = Graph(**graph_options, **dimensions)  # type: ignore
         else:
             self.graph = graph
         # Partition strategies with multiple subsets have several instances of
@@ -94,10 +93,10 @@ class GraphConvolution(torch.nn.Module):
                                     dilation=(temporal_dilation, 1),
                                     bias=bias)
 
-        if batch_norm:
-            self.batch_norm = torch.nn.BatchNorm2d(out_channels)
-        else:
+        if not batch_norm:
             self.batch_norm = None
+        else:
+            self.batch_norm = torch.nn.BatchNorm2d(out_channels)
 
         if not residual:
             self.residual = None

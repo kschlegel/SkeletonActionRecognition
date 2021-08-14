@@ -68,7 +68,7 @@ class SkeletonDataset(Dataset):
     def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, index: int) -> Tuple[np.array, int]:
+    def __getitem__(self, index: int) -> Tuple[np.ndarray, int]:
         keypoints, action = self._data[index]
         if len(keypoints.shape) == 3:
             # if data has no person dimension temporarily add one

@@ -52,9 +52,9 @@ class TemporalGraphConvolution(torch.nn.Module):
         )
 
         if batch_norm:
-            self.batchnorm = torch.nn.BatchNorm2d(out_channels)
-        else:
             self.batchnorm = None
+        else:
+            self.batchnorm = torch.nn.BatchNorm2d(out_channels)
 
         if not residual:
             self.residual = None
