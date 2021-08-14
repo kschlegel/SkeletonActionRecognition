@@ -159,7 +159,8 @@ class Graph(torch.nn.Module):
         if self.data_dependent_adjacency:
             # update the data-dependent component of the adjacency matrix
             batch, __, frames, nodes = x.size()
-            C = torch.zeros((x.shape[0], ) + self.A.shape)
+            C = torch.zeros((x.shape[0], ) + self.A.shape,
+                            device=self.A.device)
             for i in range(self.A.shape[0]):
                 C1 = self.phi[i](x).permute(0, 3, 1, 2).contiguous().view(
                     batch, nodes, self.embedding_dimension * frames)

@@ -1,7 +1,8 @@
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
+from datasetloader import NTURGBD
 
-from skeletondataset import SkeletonDataset
+from skeletonactionrecognition.data import SkeletonDataset
 
 DEFAULT_BATCH_SIZE = 64
 DEFAULT_ADJUST_LEN = "interpolate"
@@ -12,20 +13,7 @@ class SkeletonDataModule(pl.LightningDataModule):
     @staticmethod
     def add_data_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("Data specific arguments")
-        parser.add_argument('-ds',
-                            '--data_path',
-                            type=str,
-                            required=True,
-                            help="Path to the dataset.")
-        parser.add_argument(
-            '-s',
-            '--split',
-            type=str,
-            choices=["cross-subject", "cross-view"],
-            default="cross-subject",
-            help="Dataset split to use (default is cross-subject)")
-        # TODO: the two above can come from datasetloader class when it is
-        # moved from the dataset to here
+        NTURGBD.add_args(parser)
 
         parser.add_argument('-b',
                             '--batch_size',
@@ -59,22 +47,20 @@ class SkeletonDataModule(pl.LightningDataModule):
 
     def __init__(self, **kwargs):
         super().__init__()
-        self._path = kwargs["data_path"]
-        self._split = kwargs["split"]
+        self._data = NTURGBD(kwargs["path"])
+        self._data.set_cols("keypoints3D", "action")
+        self._data.set_split(kwargs["split"])
+
         self._batch_size = kwargs["batch_size"]
         self._adjust_len = kwargs["adjust_len"]
         self._target_len = kwargs["target_len"]
         self._num_workers = kwargs["num_workers"]
 
     def setup(self, stage=None):
-        self._trainingdata = SkeletonDataset(data_path=self._path,
-                                             split=self._split,
-                                             subset="train",
+        self._trainingdata = SkeletonDataset(data=self._data.trainingset,
                                              adjust_len=self._adjust_len,
                                              target_len=self._target_len)
-        self._testdata = SkeletonDataset(data_path=self._path,
-                                         split=self._split,
-                                         subset="test",
+        self._testdata = SkeletonDataset(data=self._data.testset,
                                          adjust_len=self._adjust_len,
                                          target_len=self._target_len)
 
