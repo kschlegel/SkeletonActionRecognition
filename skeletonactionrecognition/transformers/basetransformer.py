@@ -5,7 +5,7 @@ and
 https://github.com/leaderj1001/Attention-Augmented-Conv2d
 """
 
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 
@@ -34,13 +34,15 @@ class BaseTransformer(torch.nn.Module):
      - Temporal Transformer: Considers each landmark a sequence in time by
           moving the joint dimension into the batch dimension
     """
-    def __init__(self,
-                 in_channels: int,
-                 out_channels: int,
-                 dim_key: int,
-                 dim_value: int,
-                 num_heads: int,
-                 residual: bool = True) -> None:
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            dim_key: int,
+            dim_value: int,
+            num_heads: int,
+            residual: bool = True,
+            normalisation: Union[None, str, int, Tuple[int]] = None) -> None:
         """
         Parameters
         ----------
@@ -56,6 +58,13 @@ class BaseTransformer(torch.nn.Module):
             Number of attention heads
         residual : bool, optional (default is True)
             Whether to add a residual connection around the transformer block
+        normalisation : str, int or tuple of ints, optional (default is None)
+            Normalisation to be applied after the self-attention block (and
+            after adding the residual if selected). One of
+            (None, 'batch') or an int or tuple of ints - No normalisation is
+            used if None. if set to 'batch' standard batch norm is used. If an
+            int or tuple of ints is passed in applies layer norm with the value
+            used as normalised_shape argument ( see PyTorch LayerNorm docs).
         """
         super().__init__()
 
@@ -77,6 +86,15 @@ class BaseTransformer(torch.nn.Module):
             self.residual = torch.nn.Conv1d(in_channels,
                                             out_channels,
                                             kernel_size=1)
+
+        if normalisation is None:
+            self.normalisation = None
+        elif normalisation == "batch":
+            self.normalisation = torch.nn.BatchNorm1d(
+                num_features=out_channels)
+        else:
+            self.normalisation = torch.nn.LayerNorm(
+                normalised_shape=normalisation)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -114,6 +132,9 @@ class BaseTransformer(torch.nn.Module):
 
         if self.residual is not None:
             z += self.residual(x)
+
+        if self.normalisation is not None:
+            z = self.normalisation(z)
 
         return z
 

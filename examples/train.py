@@ -6,6 +6,7 @@ from datamodule import SkeletonDataModule
 from models.actionrecognitionmodule import ActionRecognitionModule  # type: ignore
 from models.stgcn import STGCN  # type: ignore
 from models.agcn import AGCN  # type: ignore
+from models.sttr import STTR  # type: ignore
 
 
 def parse_arguments():
@@ -15,7 +16,7 @@ def parse_arguments():
 
     parser.add_argument('--model_name',
                         type=str,
-                        choices=["stgcn", "agcn"],
+                        choices=["stgcn", "agcn", "sttr"],
                         default='stgcn',
                         help='The model to train (default is stgcn)')
 
@@ -44,6 +45,8 @@ def main(hparams):
         model = STGCN(num_classes=60, **hparams_dict)
     elif hparams.model_name == "agcn":
         model = AGCN(num_classes=60, **hparams_dict)
+    elif hparams.model_name == "sttr":
+        model = STTR(num_classes=60, **hparams_dict)
 
     training_module = ActionRecognitionModule(model=model,
                                               num_classes=60,
