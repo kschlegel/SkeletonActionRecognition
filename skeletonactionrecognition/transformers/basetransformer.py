@@ -5,7 +5,7 @@ and
 https://github.com/leaderj1001/Attention-Augmented-Conv2d
 """
 
-from typing import Tuple, Union
+from typing import Tuple, List, Union, Optional, Callable
 
 import torch
 
@@ -42,7 +42,7 @@ class BaseTransformer(torch.nn.Module):
             dim_value: int,
             num_heads: int,
             residual: bool = True,
-            normalisation: Union[None, str, int, Tuple[int]] = None) -> None:
+            normalisation: Union[None, str, int, List[int]] = None) -> None:
         """
         Parameters
         ----------
@@ -87,14 +87,15 @@ class BaseTransformer(torch.nn.Module):
                                             out_channels,
                                             kernel_size=1)
 
+        self.normalisation: Optional[Callable]
         if normalisation is None:
             self.normalisation = None
         elif normalisation == "batch":
             self.normalisation = torch.nn.BatchNorm1d(
                 num_features=out_channels)
-        else:
+        elif isinstance(normalisation, int) or isinstance(normalisation, list):
             self.normalisation = torch.nn.LayerNorm(
-                normalised_shape=normalisation)
+                normalized_shape=normalisation)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

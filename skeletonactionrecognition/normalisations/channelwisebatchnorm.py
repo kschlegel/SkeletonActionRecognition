@@ -8,11 +8,19 @@ class ChannelwiseBatchNorm(torch.nn.Module):
     In particular this allows to batch normalise each coordinate stream of each
     landmark individually.
     """
-    def __init__(self, in_channels, landmarks):
+    def __init__(self, in_channels: int, landmarks: int) -> None:
+        """
+        Parameters
+        ----------
+        in_channels : int
+            Number of channels per landmark
+        landmarks : int
+            Number of landmarks per frame
+        """
         super().__init__()
         self.data_batch_norm = torch.nn.BatchNorm1d(in_channels * landmarks)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Batch normalises each channel of each node individually.
 

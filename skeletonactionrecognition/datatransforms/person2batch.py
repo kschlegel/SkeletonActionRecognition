@@ -1,3 +1,5 @@
+from typing import Callable
+
 import torch
 
 
@@ -11,7 +13,10 @@ class Person2Batch(torch.nn.Module):
     extract the persons back out of the batch dimension and compute the mean
     output of all persons per example for the final output.
     """
-    def __init__(self, person_dimension, num_persons, aggregation="mean"):
+    def __init__(self,
+                 person_dimension: int,
+                 num_persons: int,
+                 aggregation: str = "mean") -> None:
         """
         Parameters
         ----------
@@ -19,15 +24,20 @@ class Person2Batch(torch.nn.Module):
             Dimension in the input sequence where the person is indexed
         num_persons : int
             Number of persons in each input sequence
+        aggregation : str, optional (default is 'mean')
+            One of ('mean', 'max') - Method to aggregate results of all persons
+            of individual samples.
         """
         super().__init__()
-        if person_dimension != 1:
+        if person_dimension == 1:
+            self.permutation = None
+        else:
             self.permutation = (
                 [0, person_dimension] +
                 list(i for i in range(1, 5) if i != person_dimension))
-        else:
-            self.permutation = None
         self.num_persons = num_persons
+
+        self.aggregation: Callable
         if aggregation == "mean":
             self.aggregation = torch.mean
         elif aggregation == "max":
@@ -35,7 +45,7 @@ class Person2Batch(torch.nn.Module):
         else:
             raise ValueError("Invalid aggregation method.")
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Moves the person dimension into the batch dimension.
 
@@ -61,7 +71,7 @@ class Person2Batch(torch.nn.Module):
         x = x.view(s[0] * s[1], *s[2:])
         return x
 
-    def extract_persons(self, x):
+    def extract_persons(self, x: torch.Tensor) -> torch.Tensor:
         """
         Extracts the persons out of the batch dimension and aggregates outputs.
 
