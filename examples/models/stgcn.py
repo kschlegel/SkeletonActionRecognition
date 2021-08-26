@@ -1,7 +1,7 @@
 import torch
-from skeletonactionrecognition.datatransforms import Person2Batch
-from skeletonactionrecognition.normalisations import ChannelwiseBatchNorm
-from skeletonactionrecognition.graphs import SpatioTemporalGraphConvolution
+from shar.datatransforms import Person2Batch
+from shar.normalisations import ChannelwiseBatchNorm
+from shar.graphs import SpatioTemporalGraphConvolution
 
 
 class STGCN(torch.nn.Module):

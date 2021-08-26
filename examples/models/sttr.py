@@ -1,9 +1,8 @@
 import torch
-from skeletonactionrecognition.datatransforms import Person2Batch
-from skeletonactionrecognition.normalisations import ChannelwiseBatchNorm
-from skeletonactionrecognition.graphs import SpatioTemporalGraphConvolution
-from skeletonactionrecognition.transformers import (SpatialTransformer,
-                                                    TemporalTransformer)
+from shar.datatransforms import Person2Batch
+from shar.normalisations import ChannelwiseBatchNorm
+from shar.graphs import SpatioTemporalGraphConvolution
+from shar.transformers import SpatialTransformer, TemporalTransformer
 
 
 class STTR(torch.nn.Module):

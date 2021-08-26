@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from skeletonactionrecognition.graphs import Graph
+from shar.graphs import Graph
 
 coco_distances = [[0, 1, 2, 3, 4, 2, 3, 4, 3, 4, 5, 3, 4, 5, 1, 1, 2, 2],
                   [1, 0, 1, 2, 3, 1, 2, 3, 2, 3, 4, 2, 3, 4, 2, 2, 3, 3],

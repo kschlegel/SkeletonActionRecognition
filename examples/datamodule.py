@@ -2,7 +2,7 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from datasetloader import NTURGBD
 
-from skeletonactionrecognition.data import SkeletonDataset
+from shar.data import SkeletonDataset
 
 DEFAULT_BATCH_SIZE = 64
 DEFAULT_ADJUST_LEN = "interpolate"
