@@ -12,6 +12,7 @@ class Graph(torch.nn.Module):
                  graph_layout: Optional[str] = 'kinectv2',
                  graph_connections: Optional[List[Tuple[int, int]]] = None,
                  center_node: Optional[int] = None,
+                 num_nodes: Optional[int] = None,
                  graph_partition_strategy: str = 'uniform',
                  directed_graph: bool = False,
                  learnable_adjacency: bool = False,
@@ -26,8 +27,10 @@ class Graph(torch.nn.Module):
         Parameters
         ----------
         graph_layout : str, Optional (default is 'kinectv2)
-            One of ('COCO18', 'kinectv2') - String identifier of the graph
-            layout for some common keypoint collections.
+            One of ('COCO18', 'kinectv2', 'fully_connected', 'not_connected') -
+            String identifier of the graph layout for some common keypoint
+            collections. ('not_connected' is a workaround for deactivating the
+            static part of the adjacency matrix)
             If not provided then both connections and center_node must be given
         graph_connections: List of integer tuples, Optional (default is None)
             List of pairs of integers, describing the connections within the
@@ -36,8 +39,14 @@ class Graph(torch.nn.Module):
             If not provided then partition_strategy must be given
         center_node: int, Optional (default is None)
             ID of the centre node of the skeleton for spatial partition
-            strategy. Must be provided in conjunction with connections list.
-            If not provided then partition_strategy must be given
+            strategy. Must be provided in conjunction with connections list or
+            'fully_connected' partition.
+            If not provided then partition_strategy other than
+            'fully_connected' must be given.
+        num_nodes : int, Optional (default is None)
+            Only required when using graph layout 'fully_connected', otherwise
+            the number of nodes is inferred from the layout or the given
+            connections
         graph_partition_strategy : str, Optional (default is 'uniform)
             One of ('uniform','distance','spatial') - Graph partition strategy
             defining the weight function
@@ -79,10 +88,12 @@ class Graph(torch.nn.Module):
         super().__init__()
 
         self.directed_graph = directed_graph
-        self._compute_edges(graph_layout=graph_layout,
-                            connections=graph_connections,
-                            center_node=center_node)
-        self._compute_distance_matrix(max_neighbour_distance)
+        self._compute_distance_matrix(
+            max_neighbour_distance=max_neighbour_distance,
+            graph_layout=graph_layout,
+            connections=graph_connections,
+            center_node=center_node,
+            num_nodes=num_nodes)
 
         # Static component of the adjacency matrix
         self.A: torch.Tensor
@@ -174,68 +185,6 @@ class Graph(torch.nn.Module):
         if self.edge_importance is not None:
             A = A * self.edge_importance
         return A
-
-    def _compute_edges(self,
-                       graph_layout: Optional[str] = None,
-                       connections: Optional[List[Tuple[int, int]]] = None,
-                       center_node: Optional[int] = None) -> None:
-        """
-        Computes the list of edges in the graph.
-
-        When passed a string identifier of a graph layout, creates a list of
-        all edges (expressed as a tuple of node indices), including self-links
-        of all nodes and stores it in self.edges.
-        self.num_nodes contains the number of nodes in the graph, and
-        self.centre represents the shoulder centre/neck keypoint for the
-        spatial graph partitioning strategy.
-
-        Can also be passed a list of connections in the graph, together with
-        the id of centre node. In this case the number of nodes is inferred
-        from the indices occuring in the connection list and self connections
-        of all nodes are added to the list.
-
-        Parameters
-        ----------
-        graph_layout : str, Optional (default is None)
-            One of ('COCO18', 'kinectv2') - String identifier of the graph
-            layout for some common keypoint collections.
-            If not provided then both connections and center_node must be given
-        connections: List of integer tuples, Optional (default is None)
-            List of pairs of integers, describing the connections within the
-            graph, excluding self-connections, which are added automatically.
-            When using this centre_node must also be specified.
-            If not provided then partition_strategy must be given
-        center_node: int, Optional (default is None)
-            ID of the centre node of the skeleton for spatial partition
-            strategy. Must be provided in conjunction with connections list.
-            If not provided then partition_strategy must be given
-        """
-        if connections is not None and center_node is not None:
-            self.num_nodes = max(max(c) for c in connections) + 1
-            self.center = center_node
-        elif graph_layout is not None:
-            if graph_layout == 'COCO18':
-                self.num_nodes = 18
-                connections = [(4, 3), (3, 2), (7, 6), (6, 5), (13, 12),
-                               (12, 11), (10, 9), (9, 8), (11, 5), (8, 2),
-                               (5, 1), (2, 1), (0, 1), (15, 0), (14, 0),
-                               (17, 15), (16, 14)]
-                self.center = 1
-            elif graph_layout == 'kinectv2':
-                self.num_nodes = 25
-                connections = [(0, 1), (1, 20), (2, 20), (3, 2), (4, 20),
-                               (5, 4), (6, 5), (7, 6), (8, 20), (9, 8),
-                               (10, 9), (11, 10), (12, 0), (13, 12), (14, 13),
-                               (15, 14), (16, 0), (17, 16), (18, 17), (19, 18),
-                               (21, 22), (22, 7), (23, 24), (24, 11)]
-                self.center = 20
-            else:
-                raise ValueError("Invalid layout.")
-        else:
-            raise Exception("Either graph_layout or connections&centre need to"
-                            " be provided to create the graph.")
-        self_connections = [(i, i) for i in range(self.num_nodes)]
-        self.edges = self_connections + connections
 
     def _get_adjacency_matrix(self, partition_strategy: str,
                               normalisation_method: str,
@@ -350,7 +299,13 @@ class Graph(torch.nn.Module):
         A.requires_grad = False
         return A
 
-    def _compute_distance_matrix(self, max_neighbour_distance: int) -> None:
+    def _compute_distance_matrix(self,
+                                 max_neighbour_distance: int,
+                                 graph_layout: Optional[str] = None,
+                                 connections: Optional[List[Tuple[
+                                     int, int]]] = None,
+                                 center_node: Optional[int] = None,
+                                 num_nodes: Optional[int] = None) -> None:
         """
         Returns a matrix of pairwise node distances.
 
@@ -363,25 +318,118 @@ class Graph(torch.nn.Module):
         max_neighbour_distance : int
             Maximal distance between to neighbours to be considered connected
             for forming a nodes neighbour set.
+        graph_layout : str, Optional (default is None)
+            One of ('COCO18', 'kinectv2', 'fully_connected', 'not_connected') -
+            String identifier of the graph layout for some common keypoint
+            collections. ('not_connected' is a workaround for deactivating the
+            static part of the adjacency matrix)
+            If not provided then both connections and center_node must be given
+        connections: List of integer tuples, Optional (default is None)
+            List of pairs of integers, describing the connections within the
+            graph, excluding self-connections, which are added automatically.
+            When using this centre_node must also be specified.
+            If not provided then partition_strategy must be given
+        center_node: int, Optional (default is None)
+            ID of the centre node of the skeleton for spatial partition
+            strategy. Must be provided in conjunction with connections list.
+            If not provided then partition_strategy must be given
         """
-        A = torch.zeros((self.num_nodes, self.num_nodes))
-        for i, j in self.edges:
-            A[i, j] = 1  # edge from i to j
-            if not self.directed_graph:
-                A[j, i] = 1  # edge from j to i
+        if graph_layout == "fully_connected":
+            self.num_nodes = num_nodes
+            self.center_node = center_node
+            self.distance_matrix = torch.ones(
+                (self.num_nodes, self.num_nodes)) - torch.eye(self.num_nodes)
+        elif graph_layout == "not_connected":
+            self.num_nodes = num_nodes
+            self.center_node = 0  # centre node is irrelevant in this case
+            self.distance_matrix = torch.full((self.num_nodes, self.num_nodes),
+                                              float("Inf"))
+        else:
+            edges = self._compute_edges(graph_layout=graph_layout,
+                                        connections=connections,
+                                        center_node=center_node)
+            A = torch.zeros((self.num_nodes, self.num_nodes))
+            for i, j in edges:
+                A[i, j] = 1  # edge from i to j
+                if not self.directed_graph:
+                    A[j, i] = 1  # edge from j to i
 
-        self.distance_matrix = torch.full((self.num_nodes, self.num_nodes),
-                                          float("Inf"))
-        # Powers A^i for i=0,...,max_neighbour_distance of the adjacency matrix
-        # will each be non-zero at each pair that has at most distance i.
-        matrix_powers = [
-            torch.matrix_power(A, d) for d in range(max_neighbour_distance + 1)
-        ]
-        # Putting distances into the distance matrix in decending order
-        # iteratively overrides the smaller distances until the correct
-        # distance
-        for d in range(max_neighbour_distance, -1, -1):
-            self.distance_matrix[matrix_powers[d] > 0] = d
+            self.distance_matrix = torch.full((self.num_nodes, self.num_nodes),
+                                              float("Inf"))
+            # Powers A^i for i=0,...,max_neighbour_distance of the adjacency
+            # matrix will each be non-zero at each pair that has at most
+            # distance i.
+            matrix_powers = [
+                torch.matrix_power(A, d)
+                for d in range(max_neighbour_distance + 1)
+            ]
+            # Putting distances into the distance matrix in decending order
+            # iteratively overrides the smaller distances until the correct
+            # distance
+            for d in range(max_neighbour_distance, -1, -1):
+                self.distance_matrix[matrix_powers[d] > 0] = d
+
+    def _compute_edges(self,
+                       graph_layout: Optional[str] = None,
+                       connections: Optional[List[Tuple[int, int]]] = None,
+                       center_node: Optional[int] = None) -> None:
+        """
+        Computes the list of edges in the graph.
+
+        When passed a string identifier of a graph layout, creates a list of
+        all edges (expressed as a tuple of node indices), including self-links
+        of all nodes and stores it in self.edges.
+        self.num_nodes contains the number of nodes in the graph, and
+        self.centre represents the shoulder centre/neck keypoint for the
+        spatial graph partitioning strategy.
+
+        Can also be passed a list of connections in the graph, together with
+        the id of centre node. In this case the number of nodes is inferred
+        from the indices occuring in the connection list and self connections
+        of all nodes are added to the list.
+
+        Parameters
+        ----------
+        graph_layout : str, Optional (default is None)
+            One of ('COCO18', 'kinectv2') - String identifier of the graph
+            layout for some common keypoint collections.
+            If not provided then both connections and center_node must be given
+        connections: List of integer tuples, Optional (default is None)
+            List of pairs of integers, describing the connections within the
+            graph, excluding self-connections, which are added automatically.
+            When using this centre_node must also be specified.
+            If not provided then partition_strategy must be given
+        center_node: int, Optional (default is None)
+            ID of the centre node of the skeleton for spatial partition
+            strategy. Must be provided in conjunction with connections list.
+            If not provided then partition_strategy must be given
+        """
+        if connections is not None and center_node is not None:
+            self.num_nodes = max(max(c) for c in connections) + 1
+            self.center = center_node
+        elif graph_layout is not None:
+            if graph_layout == 'COCO18':
+                self.num_nodes = 18
+                connections = [(4, 3), (3, 2), (7, 6), (6, 5), (13, 12),
+                               (12, 11), (10, 9), (9, 8), (11, 5), (8, 2),
+                               (5, 1), (2, 1), (0, 1), (15, 0), (14, 0),
+                               (17, 15), (16, 14)]
+                self.center = 1
+            elif graph_layout == 'kinectv2':
+                self.num_nodes = 25
+                connections = [(0, 1), (1, 20), (2, 20), (3, 2), (4, 20),
+                               (5, 4), (6, 5), (7, 6), (8, 20), (9, 8),
+                               (10, 9), (11, 10), (12, 0), (13, 12), (14, 13),
+                               (15, 14), (16, 0), (17, 16), (18, 17), (19, 18),
+                               (21, 22), (22, 7), (23, 24), (24, 11)]
+                self.center = 20
+            else:
+                raise ValueError("Invalid layout.")
+        else:
+            raise Exception("Either graph_layout or connections&centre need to"
+                            " be provided to create the graph.")
+        self_connections = [(i, i) for i in range(self.num_nodes)]
+        return self_connections + connections
 
     @staticmethod
     def _mean_pooling_normalization(A: torch.Tensor) -> torch.Tensor:
