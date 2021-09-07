@@ -6,9 +6,9 @@ class TimeIncorporatedTransform(torch.nn.Module):
     Compute the time incorporated transformation of the path.
 
     Takes a tensor of shape (batch, channels, frames, nodes).
-    For each batch element and each node transforms the temporal path of
-    channels and length frames, adding an extra channel with a monotone
-    increasing time value (integer 0 to num_frames or float 0 to 1).
+    For each node transforms the temporal path of each node, adding an extra
+    channel with a monotone increasing time value (integer 0 to num_frames or
+    float 0 to 1).
 
     Example:
     The path 2,8,4 turns into
