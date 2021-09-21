@@ -44,9 +44,9 @@ class Graph(torch.nn.Module):
             If not provided then partition_strategy other than
             'fully_connected' must be given.
         num_nodes : int, Optional (default is None)
-            Only required when using graph layout 'fully_connected', otherwise
-            the number of nodes is inferred from the layout or the given
-            connections
+            Only required when using graph layout 'fully_connected' or
+            'not_connected', otherwise the number of nodes is inferred from the
+            layout or the given connections.
         graph_partition_strategy : str, Optional (default is 'uniform)
             One of ('uniform','distance','spatial') - Graph partition strategy
             defining the weight function
@@ -333,13 +333,22 @@ class Graph(torch.nn.Module):
             ID of the centre node of the skeleton for spatial partition
             strategy. Must be provided in conjunction with connections list.
             If not provided then partition_strategy must be given
+        num_nodes : int, Optional (default is None)
+            Only required when using graph layout 'fully_connected' or
+            'not_connected', otherwise the number of nodes is inferred from the
+            layout or the given connections.
         """
         if graph_layout == "fully_connected":
+            if num_nodes is None:
+                raise Exception("Number of nodes needs to be specified for "
+                                "fully connected graphs")
             self.num_nodes = num_nodes
             self.center_node = center_node
             self.distance_matrix = torch.ones(
                 (self.num_nodes, self.num_nodes)) - torch.eye(self.num_nodes)
         elif graph_layout == "not_connected":
+            raise Exception(
+                "Number of nodes needs to be specified for unconnected graphs")
             self.num_nodes = num_nodes
             self.center_node = 0  # centre node is irrelevant in this case
             self.distance_matrix = torch.full((self.num_nodes, self.num_nodes),
@@ -369,10 +378,11 @@ class Graph(torch.nn.Module):
             for d in range(max_neighbour_distance, -1, -1):
                 self.distance_matrix[matrix_powers[d] > 0] = d
 
-    def _compute_edges(self,
-                       graph_layout: Optional[str] = None,
-                       connections: Optional[List[Tuple[int, int]]] = None,
-                       center_node: Optional[int] = None) -> None:
+    def _compute_edges(
+            self,
+            graph_layout: Optional[str] = None,
+            connections: Optional[List[Tuple[int, int]]] = None,
+            center_node: Optional[int] = None) -> List[Tuple[int, int]]:
         """
         Computes the list of edges in the graph.
 

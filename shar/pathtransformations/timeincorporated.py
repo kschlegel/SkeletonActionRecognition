@@ -46,6 +46,8 @@ class TimeIncorporatedTransform(torch.nn.Module):
             end = frames
             step = 1
 
+        # Create monotone increasing time series and repeat for all batch
+        # elements and nodes
         time_dimension = torch.arange(start=0,
                                       end=end,
                                       step=step,
