@@ -1,40 +1,41 @@
-import numpy as np
 import torch
-import torch.nn as nn
-import signatory
+
+from ._signaturelayers import _SegmentSignatures
 
 
-class LogSigRNN(nn.Module):
+class LogSigRNN(torch.nn.Module):
     """
     Implement the Logsig-RNN module.
 
     Takes an input sequence of shape
-        (batch, frames, in_channels).
+        (batch, in_channels, frames, nodes).
     The first step is to split the sequence at the temporal dimension
     into n segments. At each segment, computes the logsignature up to
     level k. To use the information of the start points of each segment,
     the start point is concatenated to the output of the log-signature module.
-    Then the frequency reduced sequence is passed into a LSTM.
+    Then the frequency reduced sequence is passed into a LSTM with hidden state
+    of size out_channels. The output is the hidden state sequence of the LSTM.
     Returns a tensor of shape
-        (batch, n_segments, n_hiddens)
+        (batch, out_channels, num_segments, nodes)
     """
     def __init__(self,
                  in_channels: int,
-                 logsig_depth: int,
-                 n_segments: int,
-                 n_hiddens: int,
+                 logsignature_lvl: int,
+                 num_segments: int,
+                 out_channels: int,
                  include_startpoint: bool = True) -> None:
         """
         Parameters
         ----------
         in_channels : int
             The number of input channels
-        logsig_depth : int
+        logsignature_lvl : int
             The level of the log-signature to compute
-        n_segments : int
+        num_segments : int
             The number of segments to split the input sequence into
-        n_hiddens : int
-            The number of hidden neurons in the LSTM
+        out_channels : int
+            The size of the hidden state of the LSTM, which forms the output
+            sequence of the LogSigRNN
         include_startpoint : bool, optional (default is true)
             If True each segments logsignature is concatenated with the start
             point of the segment to include the positional information in later
@@ -42,94 +43,39 @@ class LogSigRNN(nn.Module):
         """
         super(LogSigRNN, self).__init__()
 
-        logsig_channels = signatory.logsignature_channels(
-            in_channels=in_channels, depth=logsig_depth)
-        self.logsig = _LogSig(in_channels=in_channels,
-                              logsig_depth=logsig_depth,
-                              n_segments=n_segments,
-                              include_startpoint=include_startpoint)
+        self.logsig = _SegmentSignatures(in_channels=in_channels,
+                                         signature_lvl=logsignature_lvl,
+                                         num_segments=num_segments,
+                                         logsignature=True,
+                                         include_startpoint=include_startpoint)
 
-        self.lstm = nn.LSTM(input_size=in_channels + logsig_channels,
-                            hidden_size=n_hiddens,
-                            num_layers=1,
-                            batch_first=True,
-                            bidirectional=False)
+        self.lstm = torch.nn.LSTM(input_size=self.logsig.out_channels,
+                                  hidden_size=out_channels,
+                                  num_layers=1,
+                                  batch_first=True,
+                                  bidirectional=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Parameters
         ----------
         x : tensor
-            Input tensor of shape (batch, frames, in_channels)
+            Input tensor of shape (batch, in_channels, frames, nodes)
 
         Returns
         -------
         x : tensor
-            Output tensor of shape (batch, n_segments, n_hiddens)
+            Output tensor of shape (batch, out_channels, num_segments, nodes)
         """
-        N, T, C = x.size()
+        batch, in_channels, frames, nodes = x.size()
+        x = x.permute(0, 3, 1, 2)
+        x = torch.reshape(x, (batch * nodes, in_channels, nodes))
 
         x_logsig = self.logsig(x).type_as(x)
         self.lstm.flatten_parameters()
         x, _ = self.lstm(x_logsig)
 
+        x = torch.reshape(x, (batch, nodes, -1, frames))
+        x = x.permute(0, 2, 3, 1)
+
         return x
-
-
-class _LogSig(nn.Module):
-    """
-    Compute the segment-wise log-signatures.
-
-    Takes an input sequence of shape
-        (batch, frames, channels),
-    splits it into n segments and computes the logsignature
-    of each segment. Returns an output sequence of shape
-        (batch, n_segments, logsig_channels)
-    """
-    def __init__(self,
-                 logsig_depth: int,
-                 n_segments: int,
-                 include_startpoint: bool = True) -> None:
-        """
-        Parameters
-        ----------
-        logsig_depth : int
-            The level of the log-signature to compute
-        n_segments : int
-            The number of segments to split the input sequence into
-        include_startpoint : bool, optional (default is true)
-            If True each segments logsignature is concatenated with the start
-            point of the segment to include the positional information in later
-            stages
-        """
-        super(_LogSig, self).__init__()
-        self.n_segments = n_segments
-
-        self.logsignature = signatory.LogSignature(depth=logsig_depth)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        x : tensor
-            Input tensor of shape (batch, stream, in_channels)
-
-        Returns
-        -------
-        x : tensor
-            Output tensor of shape (batch, n_segments, logsig_channels)
-        """
-        nT = x.size(1)
-        t_vec = np.linspace(1, nT, self.n_segments + 1)
-        t_vec = [int(round(x) - 1) for x in t_vec]
-
-        MultiLevelLogSig = []
-        for i in range(self.n_segments):
-            MultiLevelLogSig.append(
-                self.logsignature(x[:, t_vec[i]:t_vec[i + 1] +
-                                    1, :].clone()).unsqueeze(1))
-        x_logsig = torch.cat(MultiLevelLogSig, axis=1)
-
-        out = torch.cat([x_logsig, x[:, t_vec[:-1]].clone()], axis=-1)
-
-        return out
