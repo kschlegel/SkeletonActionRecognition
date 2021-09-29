@@ -7,6 +7,7 @@ from models.actionrecognitionmodule import ActionRecognitionModule  # type: igno
 from models.stgcn import STGCN  # type: ignore
 from models.agcn import AGCN  # type: ignore
 from models.sttr import STTR  # type: ignore
+from models.gcnlogsigrnn import GCNLOGSIG
 
 
 def parse_arguments():
@@ -16,7 +17,7 @@ def parse_arguments():
 
     parser.add_argument('--model_name',
                         type=str,
-                        choices=["stgcn", "agcn", "sttr"],
+                        choices=["stgcn", "agcn", "sttr", "gcnlogsigrnn"],
                         default='stgcn',
                         help='The model to train (default is stgcn)')
 
@@ -47,9 +48,11 @@ def main(hparams):
         model = AGCN(num_classes=60, **hparams_dict)
     elif hparams.model_name == "sttr":
         model = STTR(num_classes=60, **hparams_dict)
+    elif hparams.model_name == "gcnlogsigrnn":
+        model = GCNLOGSIG(num_classes=120, **hparams_dict)
 
     training_module = ActionRecognitionModule(model=model,
-                                              num_classes=60,
+                                              num_classes=120,
                                               **hparams_dict)
 
     trainer = pl.Trainer.from_argparse_args(hparams)
