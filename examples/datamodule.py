@@ -1,3 +1,7 @@
+import sys
+sys.path.insert(0, '')
+sys.path.append('..')
+
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from datasetloader import NTURGBD
