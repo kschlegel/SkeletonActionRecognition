@@ -42,6 +42,7 @@ class LogSigRNN(torch.nn.Module):
             stages
         """
         super(LogSigRNN, self).__init__()
+        self.num_segments = num_segments
 
         self.logsig = _SegmentSignatures(in_channels=in_channels,
                                          signature_lvl=logsignature_lvl,
@@ -69,13 +70,13 @@ class LogSigRNN(torch.nn.Module):
         """
         batch, in_channels, frames, nodes = x.size()
         x = x.permute(0, 3, 1, 2)
-        x = torch.reshape(x, (batch * nodes, in_channels, nodes))
+        x = torch.reshape(x, (batch * nodes, in_channels, frames))
 
         x_logsig = self.logsig(x).type_as(x)
         self.lstm.flatten_parameters()
         x, _ = self.lstm(x_logsig)
 
-        x = torch.reshape(x, (batch, nodes, -1, frames))
+        x = torch.reshape(x, (batch, nodes, -1, self.num_segments))
         x = x.permute(0, 2, 3, 1)
 
         return x
