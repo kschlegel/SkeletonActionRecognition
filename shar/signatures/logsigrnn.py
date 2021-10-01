@@ -69,10 +69,12 @@ class LogSigRNN(torch.nn.Module):
             Output tensor of shape (batch, out_channels, num_segments, nodes)
         """
         batch, in_channels, frames, nodes = x.size()
+
         x = x.permute(0, 3, 1, 2)
         x = torch.reshape(x, (batch * nodes, in_channels, frames))
 
         x_logsig = self.logsig(x).type_as(x)
+        x_logsig = x_logsig.transpose(1, 2)
         self.lstm.flatten_parameters()
         x, _ = self.lstm(x_logsig)
 
