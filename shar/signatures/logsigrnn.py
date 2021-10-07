@@ -1,6 +1,8 @@
+import warnings
+
 import torch
 
-from ._signaturelayers import _SegmentSignatures
+from ._signaturelayers import _SegmentSignatures, _SegmentSignaturesSequential
 
 
 class LogSigRNN(torch.nn.Module):
@@ -23,7 +25,8 @@ class LogSigRNN(torch.nn.Module):
                  logsignature_lvl: int,
                  num_segments: int,
                  out_channels: int,
-                 include_startpoint: bool = True) -> None:
+                 include_startpoint: bool = True,
+                 parallelize_signatures: bool = True) -> None:
         """
         Parameters
         ----------
@@ -40,15 +43,33 @@ class LogSigRNN(torch.nn.Module):
             If True each segments logsignature is concatenated with the start
             point of the segment to include the positional information in later
             stages
+        parallelize_signatures : bool, optional (default is True)
+            If True the segments are moved into the batch dimension to compute
+            signatures of all segments in parallel. If False then segments are
+            processed sequentially. Computing signatures in parallel requires
+            at least PyTorch version 1.7.0, for older versions of PyTorch
+            defaults to sequential computation.
         """
         super(LogSigRNN, self).__init__()
         self.num_segments = num_segments
 
-        self.logsig = _SegmentSignatures(in_channels=in_channels,
-                                         signature_lvl=logsignature_lvl,
-                                         num_segments=num_segments,
-                                         logsignature=True,
-                                         include_startpoint=include_startpoint)
+        version = torch.__version__.split(".")
+        if int(version[0]) == 1 and int(version[1]) < 7:
+            if parallelize_signatures:
+                warnings.warn(
+                    "Computing signatures in parallel requires at least PyTorch "
+                    "version 1.7.0. Defaulting to sequential signature computation.")
+            parallelize_signatures = False
+        if parallelize_signatures:
+            SignatureModel = _SegmentSignatures
+        else:
+            SignatureModel = _SegmentSignaturesSequential
+
+        self.logsig = SignatureModel(in_channels=in_channels,
+                                     signature_lvl=logsignature_lvl,
+                                     num_segments=num_segments,
+                                     logsignature=True,
+                                     include_startpoint=include_startpoint)
 
         self.lstm = torch.nn.LSTM(input_size=self.logsig.out_channels,
                                   hidden_size=out_channels,
