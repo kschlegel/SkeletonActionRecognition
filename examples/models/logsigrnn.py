@@ -1,6 +1,8 @@
 import torch
 from shar.datatransforms import Person2Batch
 from shar.normalisations import ChannelwiseBatchNorm
+from shar.pathtransformations import (AccumulativeTransform, EmbeddingLayer,
+                                      TimeIncorporatedTransform)
 from shar.signatures import LogSigRNN
 
 
@@ -8,16 +10,25 @@ class LogSigRNNModel(torch.nn.Module):
     @staticmethod
     def add_logsigrnn_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("LogSigRNN specific")
-        parser.add_argument('--num_segments', type=int, default=50,
+        parser.add_argument('--num_segments',
+                            type=int,
+                            default=50,
                             help="Number of segments")
-        parser.add_argument('--lstm_channels', type=int, default=96,
+        parser.add_argument('--lstm_channels',
+                            type=int,
+                            default=96,
                             help="LSTM output channels")
+        parser.add_argument('--embedding_layer',
+                            action="store_true",
+                            help="Include Embedding layer")
+
         return parent_parser
 
     def __init__(self,
                  num_classes,
                  num_segments=50,
                  lstm_channels=96,
+                 embedding_layer=False,
                  **kwargs):
         super().__init__()
 
@@ -25,14 +36,25 @@ class LogSigRNNModel(torch.nn.Module):
                                                     landmarks=25)
         self.person2batch = Person2Batch(person_dimension=1, num_persons=2)
 
-        self.logsigrnn = LogSigRNN(
-            in_channels=3,
-            logsignature_lvl=2,
-            num_segments=num_segments,
-            out_channels=lstm_channels
-        )
+        self.embedding_layer = embedding_layer
+        if embedding_layer:
+            self.embedding_layer = EmbeddingLayer(in_channels=3,
+                                                  out_channels=30,
+                                                  landmarks=25)
+            self.accumulative = AccumulativeTransform()
+            self.time_incorporated = TimeIncorporatedTransform()
+            logsigrnn_inchannels = 31
+        else:
+            logsigrnn_inchannels = 3
 
-        self.fully_connected = torch.nn.Linear(lstm_channels, num_classes)
+        self.logsigrnn = LogSigRNN(in_channels=logsigrnn_inchannels,
+                                   logsignature_lvl=2,
+                                   num_segments=num_segments,
+                                   out_channels=lstm_channels,
+                                   include_startpoint=True)
+
+        self.fully_connected = torch.nn.Linear(lstm_channels * num_segments,
+                                               num_classes)
 
     def forward(self, x):
         # Move persons into the batch dimension
@@ -40,17 +62,17 @@ class LogSigRNNModel(torch.nn.Module):
         # Normalise data
         x = self.data_batch_norm(x)
 
+        if self.embedding_layer:
+            x = self.embedding_layer(x)
+            x = self.accumulative(x)
+            x = self.time_incorporated(x)
+
         x = self.logsigrnn(x)
 
-        batch, out_channels = x.shape[:2]
-
-        x = x.reshape(batch, out_channels, -1)
-        x = x.mean(2)
-
         x = self.person2batch.extract_persons(x)
+        x = torch.flatten(x, start_dim=1)
 
         # Predict
         x = self.fully_connected(x)
-        x = x.view(x.size(0), -1)
 
         return x

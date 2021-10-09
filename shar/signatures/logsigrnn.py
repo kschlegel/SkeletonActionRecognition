@@ -58,7 +58,8 @@ class LogSigRNN(torch.nn.Module):
             if parallelize_signatures:
                 warnings.warn(
                     "Computing signatures in parallel requires at least PyTorch "
-                    "version 1.7.0. Defaulting to sequential signature computation.")
+                    "version 1.7.0. Defaulting to sequential signature computation."
+                )
             parallelize_signatures = False
         if parallelize_signatures:
             SignatureModel = _SegmentSignatures
@@ -90,7 +91,6 @@ class LogSigRNN(torch.nn.Module):
             Output tensor of shape (batch, out_channels, num_segments, nodes)
         """
         batch, in_channels, frames, nodes = x.size()
-
         x = x.permute(0, 3, 1, 2)
         x = torch.reshape(x, (batch * nodes, in_channels, frames))
 
@@ -99,7 +99,8 @@ class LogSigRNN(torch.nn.Module):
         self.lstm.flatten_parameters()
         x, _ = self.lstm(x_logsig)
 
-        x = torch.reshape(x, (batch, nodes, -1, self.num_segments))
-        x = x.permute(0, 2, 3, 1)
+        x = torch.reshape(x, (batch, nodes, self.num_segments, -1))
+        # (batch, nodes, num_segments, channels)
+        x = x.permute(0, 3, 2, 1)
 
         return x

@@ -47,7 +47,8 @@ class SkeletonDataModule(pl.LightningDataModule):
             default=4,
             help="Number of workers to use for dataloaders (default is 4).")
 
-        parser.add_argument("--ntu120", action="store_true",
+        parser.add_argument("--ntu120",
+                            action="store_true",
                             help="Use NTU120 instead of just NTU60")
 
         return parent_parser
@@ -57,7 +58,10 @@ class SkeletonDataModule(pl.LightningDataModule):
         self._data = NTURGBD(kwargs["path"], ntu120=kwargs["ntu120"])
         self._data.set_cols("keypoints3D", "action")
         self._data.set_split(kwargs["split"])
-        self.num_actions = len(self._data.actions)
+        if kwargs["ntu120"]:
+            self.num_actions = 120
+        else:
+            self.num_actions = 60
 
         self._batch_size = kwargs["batch_size"]
         self._adjust_len = kwargs["adjust_len"]
