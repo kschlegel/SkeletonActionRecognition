@@ -1,89 +1,74 @@
-import math
-import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
-from shar.graphs import MultiScale_GraphConv as MS_GCN
+from shar.datatransforms import Person2Batch
+from shar.normalisations import ChannelwiseBatchNorm
 from shar.signatures import LogSigRNN
-from shar.graphs.ntu_rgb_d import AdjMatrixGraph
+from shar.graphs import GraphConvolution
+from shar.graphs.graphlayouts import KinectV2
+from shar.graphs.graphoptions import MS_GCN_Options
 
 
-class GCNLOGSIG(nn.Module):
-    def __init__(self,
-                 num_classes,
-                 num_point=25,
-                 num_person=2,
-                 num_gcn_scales=13,
-                 graph='shar.graphs.ntu_rgb_d.AdjMatrixGraph',
-                 in_channels=3,
-                 **kwargs):
-        super(GCNLOGSIG, self).__init__()
+class GCNLogSigRNN(torch.nn.Module):
+    @staticmethod
+    def add_stgcn_specific_args(parent_parser):
+        parser = parent_parser.add_argument_group("GCNLogSigRNN specific")
+        parser.add_argument('--layers',
+                            type=int,
+                            default=1,
+                            choices=[1, 2],
+                            help="Number of GCN+LogSigRNN blocks.")
 
-        Graph = import_class(graph)
-        A_binary = Graph().A_binary
+    def __init__(self, num_classes, num_gcn_scales=13, layers=1, **kwargs):
+        super().__init__()
 
-        self.data_bn = nn.BatchNorm1d(num_person * in_channels * num_point)
+        self.data_batch_norm = ChannelwiseBatchNorm(in_channels=3,
+                                                    landmarks=25)
+        self.person2batch = Person2Batch(person_dimension=1, num_persons=2)
 
-        # channels
-        c1 = 96
-        c2 = c1 * 2
-        self.c1 = c1
-        self.c2 = c2
+        graph = {
+            "graph_layout": KinectV2,
+            "graph_options":
+            MS_GCN_Options(max_neighbour_distance=num_gcn_scales)
+        }
 
-        self.gcn1 = MS_GCN(num_gcn_scales, 3, c1,
-                           A_binary, disentangled_agg=True)
+        channels = [3, 96, 192]
+        num_segments = [50, 30]
 
-        self.n_segments1 = 50
-        self.logsigrnn1 = LogSigRNN(
-                 in_channels = c1,
-                 logsignature_lvl = 2,
-                 num_segments = self.n_segments1,
-                 out_channels = c1,
-            )
-        """
-        self.gcn2 = MS_GCN(num_gcn_scales, c1, c2,
-                           A_binary, disentangled_agg=True)
+        module_list = []
+        for i in range(layers):
+            # TODO: Check options, e.g. residual
+            module_list += [
+                GraphConvolution(in_channels=channels[i],
+                                 out_channels=channels[i + 1],
+                                 **graph)
+            ]
 
-        self.n_segments2 = 30
-        self.logsigrnn2 = LogSigRNN(
-                 in_channels = c2,
-                 logsignature_lvl = 2,
-                 num_segments = self.n_segments2,
-                 out_channels = c2,
-            )
-        """
-        self.fc = nn.Linear(c1, num_classes)
+            module_list += [
+                LogSigRNN(
+                    in_channels=channels[i + 1],
+                    logsignature_lvl=2,
+                    num_segments=num_segments[i],
+                    out_channels=channels[i + 1],
+                )
+            ]
+        self.gcnlogsigrnn_blocks = torch.nn.ModuleList(module_list)
+
+        self.fc = torch.nn.Linear(channels[layers], num_classes)
 
     def forward(self, x):
-        N, M, C, T, V = x.size()
-        
-        x = x.permute(0, 1, 4, 2, 3).contiguous().view(N, M * V * C, T)
-        x = self.data_bn(x)
-        x = x.view(N * M, V, C, T).permute(0, 2, 3, 1).contiguous()
-        # N,C,T,V
+        x = self.person2batch(x)
 
-        x = F.relu(self.gcn1(x), inplace=False)
-        x = self.logsigrnn1(x)
+        x = self.data_batch_norm(x)
 
-        #x = F.relu(self.gcn2(x), inplace=False)
-        #x = self.logsigrnn2(x)
+        for block in self.gcnlogsigrnn_blocks:
+            x = block(x)
 
-        out = x
-        
-        out_channels = out.size(1)
-        
-        out = out.reshape(N, M, out_channels, -1)
-        out = out.mean(3)   # Global Average Pooling (Spatial+Temporal)
-        out = out.mean(1)   # Average pool number of bodies in the sequence
+        # Global Average Pooling (Spatial+Temporal)
+        x = torch.flatten(x, start_dim=2)
+        # # (batch*person, channels, frame*node)
+        x = x.mean(2)
 
-        out = self.fc(out)
-        return out
+        x = self.person2batch.extract_persons(x)
 
-
-def import_class(name):
-    components = name.split('.')
-    mod = __import__(components[0])
-    for comp in components[1:]:
-        mod = getattr(mod, comp)
-    return mod
+        x = self.fc(x)
+        return x

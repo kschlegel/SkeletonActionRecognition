@@ -1,84 +1,42 @@
-"""
-This implementation is based on
-https://github.com/yysijie/st-gcn/blob/master/net/utils/graph.py
-"""
 from typing import List, Tuple, Optional
 
 import torch
 
+from .graphlayouts import GraphLayout
+from .graphoptions import GraphOptions
+from .graphpartitions import (GraphPartition, UniformPartition,
+                              DistancePartition, SpatialPartition)
+
 
 class Graph(torch.nn.Module):
     def __init__(self,
-                 graph_layout: Optional[str] = 'kinectv2',
-                 graph_connections: Optional[List[Tuple[int, int]]] = None,
-                 center_node: Optional[int] = None,
-                 num_nodes: Optional[int] = None,
-                 graph_partition_strategy: str = 'uniform',
-                 directed_graph: bool = False,
-                 learnable_adjacency: bool = False,
-                 data_dependent_adjacency: bool = False,
-                 edge_importance_weighting: bool = False,
-                 normalisation_method: str = "mean_pooling",
-                 max_neighbour_distance: int = 1,
-                 dilation: int = 1,
+                 graph_layout: GraphLayout,
+                 graph_options: GraphOptions,
                  in_channels: Optional[int] = None,
-                 embedding_dimension: Optional[int] = None) -> None:
+                 out_channels: Optional[int] = None,
+                 embedding_dimension: Optional[int] = None,
+                 **kwargs) -> None:
         """
         Parameters
         ----------
-        graph_layout : str, Optional (default is 'kinectv2)
-            One of ('COCO18', 'kinectv2', 'fully_connected', 'not_connected') -
-            String identifier of the graph layout for some common keypoint
-            collections. ('not_connected' is a workaround for deactivating the
-            static part of the adjacency matrix)
-            If not provided then both connections and center_node must be given
-        graph_connections: List of integer tuples, Optional (default is None)
-            List of pairs of integers, describing the connections within the
-            graph, excluding self-connections, which are added automatically.
-            When using this centre_node must also be specified.
-            If not provided then partition_strategy must be given
-        center_node: int, Optional (default is None)
-            ID of the centre node of the skeleton for spatial partition
-            strategy. Must be provided in conjunction with connections list or
-            'fully_connected' partition.
-            If not provided then partition_strategy other than
-            'fully_connected' must be given.
-        num_nodes : int, Optional (default is None)
-            Only required when using graph layout 'fully_connected', otherwise
-            the number of nodes is inferred from the layout or the given
-            connections
-        graph_partition_strategy : str, Optional (default is 'uniform)
-            One of ('uniform','distance','spatial') - Graph partition strategy
-            defining the weight function
-        directed_graph : bool, Optional (default is False)
-            Whether to use a directed or undirected graph. If set to True, the
-            pairs of integers in graph_connections are interpreted as the first
-            integer denoting the start of an edge and the second integer its
-            end.
-        learnable_adjacency : bool, optional (default is False)
-            Whether to include a learnable component in the adjacency matrix
-        data_dependent_adjacency : bool, optinal (default is False)
-            Whether to include a data dependent component in the adjacency
-            matrix
-        edge_importance_weighting : bool, optional (default is False)
-            Whether to include a learnable importance weighting to the edges of
-            the graph
-        normalisation_method : str, optional (default is 'mean_pooling')
-            One of ('mean_pooling', 'symmetric') - String identifying the
-            normalisation method applied to the adjacency matrix to normalise
-            contributions based on group sizes
-        max_neighbour_distance : int, Optional (default is 1)
-            Maximal distance between to neighbours to be considered connected
-            for forming a nodes neighbour set.
-        dilation : int, Optional (default is 1)
-            Step size of distance for connections to be considered for the
-            neighbour of a node. For example, if the maximal distance is set to
-            4 with a dilation of 2 then only nodes with distance 0,2 and 4 are
-            considered part of the neighbour set of a node.
+        graph_layout : GraphLayout object
+            GraphLayout object defining the connections and the center node of
+            the graph to be created. See GraphLayout documentation for more
+            information.
+        graph_options : GraphOptions object
+            GraphOptions object defining various properties of the
+            graph to be created, such as components of the adjacency matrix and
+            normalisation method. See GraphOptions documentation for more
+            information.
         in_channels : int
             Dimension of the data at each vertex.
             Only needs to be supplied when using a data-dependent component in
             the adjacency matrix.
+        out_channels : int
+            Dimension of the data at each vertex after applying graph conv.
+            Only needs to be supplied when using a data-dependent component in
+            the adjacency matrix and if embedding_dimension is not supplied. In
+            this case embedding_dimension will default to out_channels // 4
         embedding_dimension : int
             Dimension of the data embedding for the computation of the
             data-dependent component of the adjacency matrix.
@@ -87,59 +45,56 @@ class Graph(torch.nn.Module):
         """
         super().__init__()
 
-        self.directed_graph = directed_graph
-        self._compute_distance_matrix(
-            max_neighbour_distance=max_neighbour_distance,
-            graph_layout=graph_layout,
-            connections=graph_connections,
-            center_node=center_node,
-            num_nodes=num_nodes)
-
         # Static component of the adjacency matrix
         self.A: torch.Tensor
         self.register_buffer(
-            "A",
-            self._get_adjacency_matrix(
-                partition_strategy=graph_partition_strategy,
-                normalisation_method=normalisation_method,
-                max_neighbour_distance=max_neighbour_distance,
-                dilation=dilation))
+            "A", self._compute_adjency_matrix(graph_layout, graph_options))
 
         # Optional learnable component for the adjacency matrix
-        self.learnable_adjacency = learnable_adjacency
+        self.learnable_adjacency = graph_options.learnable_adjacency
         if self.learnable_adjacency:
+            # TODO: param to init this uniformly?
             self.B = torch.nn.Parameter(torch.zeros(self.A.shape))
 
         # Optional data-dependent component for the adjacency matrix
-        self.data_dependent_adjacency = data_dependent_adjacency
+        self.data_dependent_adjacency = graph_options.data_dependent_adjacency
         if self.data_dependent_adjacency:
-            if in_channels is None or embedding_dimension is None:
-                raise Exception("The input and embedding dimensions needs to "
-                                "be specified when using a data-dependent "
-                                "component in the adjacency matrix.")
+            if in_channels is None:
+                raise Exception(
+                    "The input dimension needs to be specified when using a "
+                    "data-dependent component in the adjacency matrix.")
+            if embedding_dimension is None:
+                if out_channels is None:
+                    raise Exception(
+                        "The embedding or output dimension need to be "
+                        "specified when using a data-dependent component in "
+                        "the adjacency matrix.")
+                else:
+                    self.embedding_dimension = out_channels // 4
+            else:
+                self.embedding_dimension = embedding_dimension
+
             self.phi = torch.nn.ModuleList()
             self.theta = torch.nn.ModuleList()
-            self.embedding_dimension = embedding_dimension
             for i in range(self.A.shape[0]):
                 self.phi.append(
                     torch.nn.Conv2d(in_channels=in_channels,
-                                    out_channels=embedding_dimension,
+                                    out_channels=self.embedding_dimension,
                                     kernel_size=1))
                 self.theta.append(
                     torch.nn.Conv2d(in_channels=in_channels,
-                                    out_channels=embedding_dimension,
+                                    out_channels=self.embedding_dimension,
                                     kernel_size=1))
 
         # Optional learnable importance weighting for each edge in the graph
         self.edge_importance: Optional[torch.Tensor]
-        if edge_importance_weighting:
-            print("Add edge importance")
+        if graph_options.edge_importance_weighting:
             self.edge_importance = torch.nn.Parameter(torch.ones(
                 self.A.size()))
         else:
             self.edge_importance = None
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Assembles and returns the adjacency matrix with all selected components
 
@@ -186,10 +141,11 @@ class Graph(torch.nn.Module):
             A = A * self.edge_importance
         return A
 
-    def _get_adjacency_matrix(self, partition_strategy: str,
-                              normalisation_method: str,
-                              max_neighbour_distance: int,
-                              dilation: int) -> torch.Tensor:
+    def _compute_adjency_matrix(
+        self,
+        graph_layout: GraphLayout,
+        graph_options: GraphOptions,
+    ) -> torch.Tensor:
         """
         Computes the adjacency matrix A for different partitioning strategies.
 
@@ -201,41 +157,17 @@ class Graph(torch.nn.Module):
         The returned adjacency matrices are already nornmalised by subset
         cardinalities using the chosen normalisation method.
 
-        TODO: Spatial partitioning is not working as expected:
-                The paper describes the subgrouping as based on distance to the
-                root, but here the groups are formed by comparing both nodes
-                distance to root using the distance matrix, which has inf
-                values wherever we are above max_neighbour_distance. This means
-                e.g. for max_distance=1, as the right elbow has distance 2 to
-                the neck the distance matrix gives it distance inf and _every_
-                neighbour of the elbow has a distance less or equal to it so
-                ends up in the centripetal group.
-
         Parameters
         ----------
-        partition_strategy : str
-            One of ('uniform','distance','spatial') - Identifier of the
-            parition strategy to use.
-            Uniform partition: All nodes in a neighbourhood get assigned the
-            same label
-            Distance partition: The root node forms one subgroup, all other
-            nodes are grouped in another subgroup
-            Spatial partition: Three subgroups: Nodes closer to the skeletons
-            centre than the root node (centripetal nodes), nodes of the same
-            distance to the skeletons centre, and nodes further away from the
-            skeletons centre (centrifugal nodes)
-        normalisation_method : str
-            One of ('mean_pooling', 'symmetric') - String identifying the
-            normalisation method applied to the adjacency matrix to normalise
-            contributions based on group sizes
-        max_neighbour_distance : int
-            Maximal distance between to neighbours to be considered connected
-            for forming a nodes neighbour set.
-        dilation : int
-            Step size of distance for connections to be considered for the
-            neighbour of a node. For example, if the maximal distance is set to
-            4 with a dilation of 2 then only nodes with distance 0,2 and 4 are
-            considered part of the neighbour set of a node.
+        graph_layout : GraphLayout object
+            GraphLayout object defining the connections and the center node of
+            the graph to be created. See GraphLayout documentation for more
+            information.
+        graph_options : GraphOptions object
+            GraphOptions object defining various properties of the
+            graph to be created, such as components of the adjacency matrix and
+            normalisation method. See GraphOptions documentation for more
+            information.
 
         Returns
         -------
@@ -243,193 +175,134 @@ class Graph(torch.nn.Module):
             Set of normalised adjacency matrices (normalised by subset
             cardinalities)
         """
-        valid_steps = range(0, max_neighbour_distance + 1, dilation)
-        adjacency = torch.zeros((self.num_nodes, self.num_nodes))
-        for step in valid_steps:
-            adjacency[self.distance_matrix == step] = 1
+        distance_matrix = self._compute_distance_matrix(
+            graph_layout.edges, graph_options.directed_graph)
+
+        distance_steps = list(
+            range(0, graph_options.max_neighbour_distance + 1,
+                  graph_options.dilation))
+        adjacency = torch.zeros(distance_matrix.shape)
+        for d in distance_steps:
+            adjacency[distance_matrix == d] = 1
+
+        if graph_options.normalise_first:
+            adjacency = self._normalise(adjacency,
+                                        graph_options.normalisation_method,
+                                        graph_options.directed_graph)
+
+        partition_strategy: GraphPartition
+        if isinstance(graph_options.partition_strategy, str):
+            if graph_options.partition_strategy == 'uniform':
+                partition_strategy = UniformPartition()
+            elif graph_options.partition_strategy == 'distance':
+                partition_strategy = DistancePartition(
+                    **graph_options.asdict())
+            elif graph_options.partition_strategy == 'spatial':
+                partition_strategy = SpatialPartition(**graph_layout.asdict())
+            else:
+                raise ValueError("Invalid partition strategy")
+        else:
+            partition_strategy = graph_options.partition_strategy
+
+        adjacency = partition_strategy.apply(adjacency_matrix=adjacency,
+                                             distance_matrix=distance_matrix,
+                                             distance_steps=distance_steps)
+
+        if not graph_options.normalise_first:
+            # Late normalisation means normalising each partition component
+            # individually
+            for i in range(adjacency.shape[0]):
+                adjacency[i] = self._normalise(
+                    adjacency[i], graph_options.normalisation_method,
+                    graph_options.directed_graph)
+
+        return adjacency
+
+    @staticmethod
+    def _compute_distance_matrix(edges: List[Tuple[int, int]],
+                                 directed_graph: bool) -> torch.Tensor:
+        """
+        Computes the matrix of pairwise distances between nodes.
+
+        Returns a matrix of shape (num_nodes, num_nodes) where each entry
+        contains the minimal number of steps along edges to get from nodes i to
+        node j.
+
+        Parameters
+        ----------
+        edges: List of integer tuples
+            List of pairs of integers, describing the connections within the
+            graph, excluding self-connections, which are added automatically.
+        directed_graph: bool
+            Whether the graph is directed or undirected
+
+        Returns
+        -------
+        A : tensor
+            The matrix of pairwise node distances
+        """
+        num_nodes = max(max(c) for c in edges) + 1
+
+        edges += [(i, i) for i in range(num_nodes)]
+
+        A = torch.zeros((num_nodes, num_nodes))
+        for i, j in edges:
+            A[i, j] = 1  # edge from i to j
+            if not directed_graph:
+                A[j, i] = 1  # edge from j to i
+
+        # Let A_k be the matrix with a_{i,j}=1 if A^k for the adjacency matrix
+        # k is positive, nonzero at i,j and 0 otherwise. Then A_k - A_{k-1} is
+        # 1 at i,j if and only if node i and j have distance d and 0 everywhere
+        # else. Thus we can compute the full distance matrix by successively
+        # computing matrix powers of the adjacency matrix A to iteratively
+        # determine nodes at the next distance step until all distances have
+        # been determined
+        distance_matrix = torch.full((num_nodes, num_nodes), float("Inf"))
+        B = torch.eye(num_nodes)
+        distance_matrix[B.to(torch.bool)] = 0
+        i = 0
+        while torch.max(distance_matrix) == float("Inf"):
+            C = torch.matmul(A, B)
+            mask = (torch.minimum(C, torch.tensor(1)) -
+                    torch.minimum(B, torch.tensor(1)))
+            distance_matrix[mask.to(torch.bool)] = i + 1
+            B = C
+            i += 1
+        return distance_matrix
+
+    def _normalise(self, adjacency: torch.Tensor, normalisation_method: str,
+                   directed_graph: bool) -> torch.Tensor:
+        """
+        Normalises the adjacency matrix by the given normalisation method.
+
+        Parameters
+        ----------
+        adjacency : tensor
+            Adjacency matrix A of the graph of shape (num_nodes, num_nodes)
+            with a_{i,j}=1 if nodes i and j have are within the same subgroup,
+            0 otw.
+        normalisation_method : str
+            One of ('mean_pooling', 'symmetric') - String identifying the
+            normalisation method applied to the adjacency matrix to normalise
+            contributions based on group sizes
+        directed_graph: bool
+            Whether the graph is directed or undirected
+
+        Returns
+        -------
+        A_normalised : tensor
+            Adjacency matrix with each entry normalised by the cardinality of
+            the corresponding subset.
+        """
         if normalisation_method == "mean_pooling":
             normalized_adjacency = self._mean_pooling_normalization(adjacency)
         elif normalisation_method == "symmetric":
-            normalized_adjacency = self._symmetric_normalization(adjacency)
+            normalized_adjacency = self._symmetric_normalization(
+                adjacency, directed_graph)
         else:
             raise Exception("Invalid normalisation method.")
-
-        if partition_strategy == 'uniform':
-            # Uniform partitioning leads to a single adjacency matrix
-            # containing all connections
-            A = torch.unsqueeze(normalized_adjacency, dim=0)
-        elif partition_strategy == 'distance':
-            # For distance partitioning the adjacency matrix splits directly
-            # according to the distance, with each A_j containing the
-            # connections at distance j
-            A = torch.zeros((len(valid_steps), self.num_nodes, self.num_nodes))
-            for i, step in enumerate(valid_steps):
-                A[i][self.distance_matrix == step] = normalized_adjacency[
-                    self.distance_matrix == step]
-        elif partition_strategy == 'spatial':
-            A_list: List[torch.Tensor] = []
-            for step in valid_steps:
-                # root: same distance to the centre node as the root
-                A_root = torch.zeros((self.num_nodes, self.num_nodes))
-                # Centripetal: closer to the center node than the root
-                A_centripetal = torch.zeros((self.num_nodes, self.num_nodes))
-                # Centrifugal: further from the center node than the root
-                A_centrifugal = torch.zeros((self.num_nodes, self.num_nodes))
-                for i in range(self.num_nodes):
-                    for j in range(self.num_nodes):
-                        if self.distance_matrix[j, i] == step:
-                            if (self.distance_matrix[j, self.center] ==
-                                    self.distance_matrix[i, self.center]):
-                                A_root[j, i] = normalized_adjacency[j, i]
-                            elif (self.distance_matrix[j, self.center] >
-                                  self.distance_matrix[i, self.center]):
-                                A_centripetal[j, i] = normalized_adjacency[j,
-                                                                           i]
-                            else:
-                                A_centrifugal[j, i] = normalized_adjacency[j,
-                                                                           i]
-                if step == 0:
-                    A_list.append(A_root)
-                else:
-                    A_list.append(A_root + A_centripetal)
-                    A_list.append(A_centrifugal)
-            A = torch.stack(A_list, dim=0)
-        else:
-            raise ValueError("Invalid partition strategy")
-        A.requires_grad = False
-        return A
-
-    def _compute_distance_matrix(self,
-                                 max_neighbour_distance: int,
-                                 graph_layout: Optional[str] = None,
-                                 connections: Optional[List[Tuple[
-                                     int, int]]] = None,
-                                 center_node: Optional[int] = None,
-                                 num_nodes: Optional[int] = None) -> None:
-        """
-        Returns a matrix of pairwise node distances.
-
-        Returns a matrix of shape (num_nodes, num_nodes) where each entry
-        contains the distance between nodes i and j. Pairs further apart than
-        the maximal distance have their distance set to infinity.
-
-        Parameters
-        ----------
-        max_neighbour_distance : int
-            Maximal distance between to neighbours to be considered connected
-            for forming a nodes neighbour set.
-        graph_layout : str, Optional (default is None)
-            One of ('COCO18', 'kinectv2', 'fully_connected', 'not_connected') -
-            String identifier of the graph layout for some common keypoint
-            collections. ('not_connected' is a workaround for deactivating the
-            static part of the adjacency matrix)
-            If not provided then both connections and center_node must be given
-        connections: List of integer tuples, Optional (default is None)
-            List of pairs of integers, describing the connections within the
-            graph, excluding self-connections, which are added automatically.
-            When using this centre_node must also be specified.
-            If not provided then partition_strategy must be given
-        center_node: int, Optional (default is None)
-            ID of the centre node of the skeleton for spatial partition
-            strategy. Must be provided in conjunction with connections list.
-            If not provided then partition_strategy must be given
-        """
-        if graph_layout == "fully_connected":
-            self.num_nodes = num_nodes
-            self.center_node = center_node
-            self.distance_matrix = torch.ones(
-                (self.num_nodes, self.num_nodes)) - torch.eye(self.num_nodes)
-        elif graph_layout == "not_connected":
-            self.num_nodes = num_nodes
-            self.center_node = 0  # centre node is irrelevant in this case
-            self.distance_matrix = torch.full((self.num_nodes, self.num_nodes),
-                                              float("Inf"))
-        else:
-            edges = self._compute_edges(graph_layout=graph_layout,
-                                        connections=connections,
-                                        center_node=center_node)
-            A = torch.zeros((self.num_nodes, self.num_nodes))
-            for i, j in edges:
-                A[i, j] = 1  # edge from i to j
-                if not self.directed_graph:
-                    A[j, i] = 1  # edge from j to i
-
-            self.distance_matrix = torch.full((self.num_nodes, self.num_nodes),
-                                              float("Inf"))
-            # Powers A^i for i=0,...,max_neighbour_distance of the adjacency
-            # matrix will each be non-zero at each pair that has at most
-            # distance i.
-            matrix_powers = [
-                torch.matrix_power(A, d)
-                for d in range(max_neighbour_distance + 1)
-            ]
-            # Putting distances into the distance matrix in decending order
-            # iteratively overrides the smaller distances until the correct
-            # distance
-            for d in range(max_neighbour_distance, -1, -1):
-                self.distance_matrix[matrix_powers[d] > 0] = d
-
-    def _compute_edges(self,
-                       graph_layout: Optional[str] = None,
-                       connections: Optional[List[Tuple[int, int]]] = None,
-                       center_node: Optional[int] = None) -> None:
-        """
-        Computes the list of edges in the graph.
-
-        When passed a string identifier of a graph layout, creates a list of
-        all edges (expressed as a tuple of node indices), including self-links
-        of all nodes and stores it in self.edges.
-        self.num_nodes contains the number of nodes in the graph, and
-        self.centre represents the shoulder centre/neck keypoint for the
-        spatial graph partitioning strategy.
-
-        Can also be passed a list of connections in the graph, together with
-        the id of centre node. In this case the number of nodes is inferred
-        from the indices occuring in the connection list and self connections
-        of all nodes are added to the list.
-
-        Parameters
-        ----------
-        graph_layout : str, Optional (default is None)
-            One of ('COCO18', 'kinectv2') - String identifier of the graph
-            layout for some common keypoint collections.
-            If not provided then both connections and center_node must be given
-        connections: List of integer tuples, Optional (default is None)
-            List of pairs of integers, describing the connections within the
-            graph, excluding self-connections, which are added automatically.
-            When using this centre_node must also be specified.
-            If not provided then partition_strategy must be given
-        center_node: int, Optional (default is None)
-            ID of the centre node of the skeleton for spatial partition
-            strategy. Must be provided in conjunction with connections list.
-            If not provided then partition_strategy must be given
-        """
-        if connections is not None and center_node is not None:
-            self.num_nodes = max(max(c) for c in connections) + 1
-            self.center = center_node
-        elif graph_layout is not None:
-            if graph_layout == 'COCO18':
-                self.num_nodes = 18
-                connections = [(4, 3), (3, 2), (7, 6), (6, 5), (13, 12),
-                               (12, 11), (10, 9), (9, 8), (11, 5), (8, 2),
-                               (5, 1), (2, 1), (0, 1), (15, 0), (14, 0),
-                               (17, 15), (16, 14)]
-                self.center = 1
-            elif graph_layout == 'kinectv2':
-                self.num_nodes = 25
-                connections = [(0, 1), (1, 20), (2, 20), (3, 2), (4, 20),
-                               (5, 4), (6, 5), (7, 6), (8, 20), (9, 8),
-                               (10, 9), (11, 10), (12, 0), (13, 12), (14, 13),
-                               (15, 14), (16, 0), (17, 16), (18, 17), (19, 18),
-                               (21, 22), (22, 7), (23, 24), (24, 11)]
-                self.center = 20
-            else:
-                raise ValueError("Invalid layout.")
-        else:
-            raise Exception("Either graph_layout or connections&centre need to"
-                            " be provided to create the graph.")
-        self_connections = [(i, i) for i in range(self.num_nodes)]
-        return self_connections + connections
+        return normalized_adjacency
 
     @staticmethod
     def _mean_pooling_normalization(A: torch.Tensor) -> torch.Tensor:
@@ -463,7 +336,9 @@ class Graph(torch.nn.Module):
         A_normalised = torch.matmul(A, normalisation)
         return A_normalised
 
-    def _symmetric_normalization(self, A: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def _symmetric_normalization(A: torch.Tensor,
+                                 directed_graph: bool) -> torch.Tensor:
         """
         Normalises the adjacency matrix by subset cardinalities at both nodes.
 
@@ -494,7 +369,7 @@ class Graph(torch.nn.Module):
                 normalisation_source[i, i] = neighbour_counts[i]**(-0.5)
             else:
                 normalisation_source[i, i] = 1e-6
-        if self.directed_graph:
+        if directed_graph:
             # count edges going into node i
             neighbour_counts = torch.sum(A, dim=1)
             normalisation_target = torch.zeros((A.shape[0], A.shape[0]),

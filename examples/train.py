@@ -7,8 +7,8 @@ from models.actionrecognitionmodule import ActionRecognitionModule  # type: igno
 from models.stgcn import STGCN  # type: ignore
 from models.agcn import AGCN  # type: ignore
 from models.sttr import STTR  # type: ignore
-from models.gcnlogsigrnn import GCNLOGSIG
-from models.logsigrnn import LogSigRNNModel
+from models.logsigrnn import LogSigRNNModel  # type: ignore
+from models.gcnlogsigrnn import GCNLogSigRNN  # type: ignore
 
 
 def parse_arguments():
@@ -16,11 +16,13 @@ def parse_arguments():
 
     parser = pl.Trainer.add_argparse_args(parser)
 
-    parser.add_argument('--model_name',
-                        type=str,
-                        choices=["stgcn", "agcn", "sttr", "gcnlogsigrnn", "logsigrnn"],
-                        default='stgcn',
-                        help='The model to train (default is stgcn)')
+    child_parser = parser.add_argument_group("General arguments")
+    child_parser.add_argument(
+        '--model_name',
+        type=str,
+        choices=["stgcn", "agcn", "sttr", "gcnlogsigrnn", "logsigrnn"],
+        default='stgcn',
+        help='The model to train (default is stgcn)')
 
     parser = SkeletonDataModule.add_data_specific_args(parser)
     parser = ActionRecognitionModule.add_model_specific_args(parser)
@@ -34,7 +36,7 @@ def parse_arguments():
         parser = LogSigRNNModel.add_logsigrnn_specific_args(parser)
 
     # SET CUSTOM DEFAULTS (for convenience so I don't have to specify them)
-    parser.set_defaults(gpus=1)
+    parser.set_defaults(gpus=0)
     parser.set_defaults(max_epochs=10)
 
     return parser.parse_args()
@@ -52,7 +54,7 @@ def main(hparams):
     elif hparams.model_name == "sttr":
         model = STTR(num_classes=data.num_actions, **hparams_dict)
     elif hparams.model_name == "gcnlogsigrnn":
-        model = GCNLOGSIG(num_classes=data.num_actions, **hparams_dict)
+        model = GCNLogSigRNN(num_classes=data.num_actions, **hparams_dict)
     elif hparams.model_name == "logsigrnn":
         model = LogSigRNNModel(num_classes=data.num_actions, **hparams_dict)
 

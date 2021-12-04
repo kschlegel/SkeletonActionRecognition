@@ -1,8 +1,4 @@
-"""
-This implementation is strongly based on
-https://github.com/yysijie/st-gcn/blob/master/net/st_gcn.py
-"""
-from typing import Optional, Dict, Any
+from typing import Optional
 
 import torch
 
@@ -10,6 +6,8 @@ from .graph import Graph
 from .graphconvolution import GraphConvolution
 from .temporalgraphconvolution import TemporalGraphConvolution
 from .graphresidual import GraphResidual
+from .graphlayouts import GraphLayout
+from .graphoptions import GraphOptions
 
 
 class SpatioTemporalGraphConvolution(torch.nn.Module):
@@ -27,11 +25,14 @@ class SpatioTemporalGraphConvolution(torch.nn.Module):
                  out_channels: int,
                  temporal_kernel_size: int,
                  graph: Optional[Graph] = None,
-                 graph_options: Dict[str, Any] = {},
+                 graph_layout: Optional[GraphLayout] = None,
+                 graph_options: Optional[GraphOptions] = None,
                  temporal_stride: int = 1,
                  dropout_p: float = 0,
-                 edge_importance_weighting: bool = False,
                  residual: bool = True,
+                 nonlinearity: bool = True,
+                 spatial_nonlinearity: bool = True,
+                 temporal_nonlinearity: bool = True,
                  **kwargs) -> None:
         """
         Parameters
@@ -46,34 +47,42 @@ class SpatioTemporalGraphConvolution(torch.nn.Module):
         graph : Graph instance, optional (default is None)
             Optionally pass in a graph instance to operate on to allow sharing
             graphs between multiple convolutions.
-            If not given a graph instance will be created using the
-            graph_options.
-        graph_options : dict
-            Dictionary of options to be used as parameters when creating the
-            graph for this convolutional layer. See Graph class constructor for
-            list of possible options and values.
-            Ignored if graph instance was passed in.
+            If not given a graph instance will be created.
+        graph_layout : GraphLayout object, optional (default is None)
+            GraphLayout object defining the connections and the center node of
+            the graph to be created. Ignored if graph instance was passed in.
+            Must be specified if graph is not given.
+        graph_options : GraphOptions object, optional (default is None)
+            GraphOptions object defining various properties of the
+            graph to be created, such as components of the adjacency matrix and
+            normalisation method. See GraphOptions documentation for more
+            information. Ignored if graph instance was passed in. Must be
+            specified if graph is not given.
         temporal_stride : int, optional (default is 1)
             The stride of the temporal convolution
         dropout_p : float, optional (default is 0)
             Probability of dropping a node for dropout layer
-        edge_importance_weighting : bool, optional (default is False)
-            Whether to include a learnable importance weighting to the edges of
-            the graph in the graph convolution
         residual : bool, optional (default is True)
             Whether to include a residual connection around the full
             spatiotemporal graph convolution
+        nonlinearity : bool, optional (default is True)
+            If True a ReLU activation is applied before returning the output of
+            the convolution
+        spatial_nonlinearity : bool, optional (default is True)
+            If True a ReLU activation is applied after the spatial convolution
+        temporal_nonlinearity : bool, optional (default is True)
+            If True a ReLU activation is applied after the temporal convolution
         """
         super().__init__()
 
-        self.gcn = GraphConvolution(
-            in_channels,
-            out_channels,
-            graph=graph,
-            graph_options=graph_options,
-            edge_importance_weighting=edge_importance_weighting,
-            batch_norm=True,
-            residual=False)
+        self.gcn = GraphConvolution(in_channels,
+                                    out_channels,
+                                    graph=graph,
+                                    graph_layout=graph_layout,
+                                    graph_options=graph_options,
+                                    batch_norm=True,
+                                    residual=False,
+                                    **kwargs)
 
         self.tcn = TemporalGraphConvolution(in_channels=in_channels,
                                             out_channels=out_channels,
@@ -88,6 +97,8 @@ class SpatioTemporalGraphConvolution(torch.nn.Module):
             self.residual = GraphResidual(in_channels,
                                           out_channels,
                                           stride=temporal_stride)
+
+        self.nonlinearity = nonlinearity
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -109,4 +120,6 @@ class SpatioTemporalGraphConvolution(torch.nn.Module):
         if self.residual:
             y += self.residual(x)
 
-        return torch.nn.functional.relu(y)
+        if self.nonlinearity:
+            y = torch.nn.functional.relu(y)
+        return y

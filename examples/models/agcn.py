@@ -2,6 +2,8 @@ import torch
 from shar.datatransforms import Person2Batch
 from shar.normalisations import ChannelwiseBatchNorm
 from shar.graphs import SpatioTemporalGraphConvolution
+from shar.graphs.graphlayouts import KinectV2
+from shar.graphs.graphoptions import AGCN_Options
 
 
 class AGCN(torch.nn.Module):
@@ -30,9 +32,13 @@ class AGCN(torch.nn.Module):
                  **kwargs):
         super().__init__()
 
-        graph_options = {
-            "learnable_adjacency": not no_learnable_adjacency,
-            "data_dependent_adjacency": not no_data_dependent_adjacency
+        graph = {
+            "graph_layout":
+            KinectV2,
+            "graph_options":
+            AGCN_Options(
+                learnable_adjacency=not no_learnable_adjacency,
+                data_dependent_adjacency=not no_data_dependent_adjacency)
         }
 
         self.data_batch_norm = ChannelwiseBatchNorm(in_channels=3,
@@ -43,90 +49,90 @@ class AGCN(torch.nn.Module):
 
         module_list = [
             SpatioTemporalGraphConvolution(
-                graph_options=graph_options,
                 in_channels=3,
                 out_channels=64,
                 temporal_kernel_size=temporal_kernel_size,
                 temporal_stride=1,
-                residual=False)
+                residual=False,
+                **graph)
         ]
         if full_model:
             module_list += [
                 SpatioTemporalGraphConvolution(
-                    graph_options=graph_options,
                     in_channels=64,
                     out_channels=64,
                     temporal_kernel_size=temporal_kernel_size,
                     temporal_stride=1,
-                    residual=False),
+                    residual=False,
+                    **graph),
                 SpatioTemporalGraphConvolution(
-                    graph_options=graph_options,
                     in_channels=64,
                     out_channels=64,
                     temporal_kernel_size=temporal_kernel_size,
                     temporal_stride=1,
-                    residual=False),
+                    residual=False,
+                    **graph),
                 SpatioTemporalGraphConvolution(
-                    graph_options=graph_options,
                     in_channels=64,
                     out_channels=64,
                     temporal_kernel_size=temporal_kernel_size,
                     temporal_stride=1,
-                    residual=False)
+                    residual=False,
+                    **graph)
             ]
         module_list += [
             SpatioTemporalGraphConvolution(
-                graph_options=graph_options,
                 in_channels=64,
                 out_channels=128,
                 temporal_kernel_size=temporal_kernel_size,
                 temporal_stride=2,
-                residual=False)
+                residual=False,
+                **graph)
         ]
         if full_model:
             module_list += [
                 SpatioTemporalGraphConvolution(
-                    graph_options=graph_options,
                     in_channels=128,
                     out_channels=128,
                     temporal_kernel_size=temporal_kernel_size,
                     temporal_stride=1,
-                    residual=False),
+                    residual=False,
+                    **graph),
                 SpatioTemporalGraphConvolution(
-                    graph_options=graph_options,
                     in_channels=128,
                     out_channels=128,
                     temporal_kernel_size=temporal_kernel_size,
                     temporal_stride=1,
-                    residual=False)
+                    residual=False,
+                    **graph)
             ]
         module_list += [
             SpatioTemporalGraphConvolution(
-                graph_options=graph_options,
                 in_channels=128,
                 out_channels=256,
                 temporal_kernel_size=temporal_kernel_size,
                 temporal_stride=2,
-                residual=False)
+                residual=False,
+                **graph)
         ]
         if full_model:
             module_list += [
                 SpatioTemporalGraphConvolution(
-                    graph_options=graph_options,
                     in_channels=256,
                     out_channels=256,
                     temporal_kernel_size=temporal_kernel_size,
                     temporal_stride=1,
-                    residual=False)
+                    residual=False,
+                    **graph)
             ]
         module_list += [
             SpatioTemporalGraphConvolution(
-                graph_options=graph_options,
                 in_channels=256,
                 out_channels=256,
                 temporal_kernel_size=temporal_kernel_size,
                 temporal_stride=1,
-                residual=False)
+                residual=False,
+                **graph)
         ]
         self.st_gcn_networks = torch.nn.ModuleList(module_list)
 

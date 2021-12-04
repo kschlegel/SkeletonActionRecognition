@@ -45,7 +45,7 @@ class LogSigRNNModel(torch.nn.Module):
             self.time_incorporated = TimeIncorporatedTransform()
             logsigrnn_inchannels = 31
         else:
-            logsigrnn_inchannels = 3
+            logsigrnn_inchannels = 3 * 25
 
         self.logsigrnn = LogSigRNN(in_channels=logsigrnn_inchannels,
                                    logsignature_lvl=2,
@@ -66,6 +66,12 @@ class LogSigRNNModel(torch.nn.Module):
             x = self.embedding_layer(x)
             x = self.accumulative(x)
             x = self.time_incorporated(x)
+        else:
+            # view the skeleton as one high dimensional point
+            # (batch, channels, frames, landmarks)
+            x = x.permute(0, 1, 3, 2)
+            x = torch.reshape(x, (x.shape[0], -1, x.shape[3], 1))
+            # (batch, channels*landmarks, frames, 1)
 
         x = self.logsigrnn(x)
 

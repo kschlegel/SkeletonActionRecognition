@@ -71,11 +71,12 @@ class ActionRecognitionModule(pl.LightningModule):
         return loss
 
     def validation_epoch_end(self, outs):
-        aps = [
-            v if not torch.isnan(v) else 0
-            for v in self.average_precision.compute()
-        ]
-        mAP = torch.mean(torch.tensor(aps, device=self.device))
+        # aps = [
+        #     v if not torch.isnan(v) else 0
+        #     for v in self.average_precision.compute()
+        # ]
+        # mAP = torch.mean(torch.tensor(aps, device=self.device))
+        mAP = self.average_precision.compute()
         self.log('metrics/mean_average_precision', mAP)
         self.log('hp_metric', mAP)
 
