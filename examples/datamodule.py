@@ -4,24 +4,23 @@ from datasetloader import NTURGBD
 
 from shar.data import SkeletonDataset
 
-DEFAULT_BATCH_SIZE = 64
+DEFAULT_BATCH_SIZE = 32
 DEFAULT_ADJUST_LEN = "interpolate"
-DEFAULT_TARGET_LEN = 300
+DEFAULT_TARGET_LEN = 100
 
 
 class SkeletonDataModule(pl.LightningDataModule):
     @staticmethod
-    def add_data_specific_args(parent_parser):
-        parser = parent_parser.add_argument_group("Data specific arguments")
-        NTURGBD.add_args(parser)
-
-        parser.add_argument('-b',
-                            '--batch_size',
-                            type=int,
-                            default=DEFAULT_BATCH_SIZE,
-                            help="Batch size to use (default is {})".format(
-                                DEFAULT_BATCH_SIZE))
-        parser.add_argument(
+    def add_data_specific_args(parser):
+        child_parser = parser.add_argument_group("Data specific arguments")
+        child_parser.add_argument(
+            '-b',
+            '--batch_size',
+            type=int,
+            default=DEFAULT_BATCH_SIZE,
+            help="Batch size to use (default is {})".format(
+                DEFAULT_BATCH_SIZE))
+        child_parser.add_argument(
             '--adjust_len',
             type=str,
             choices=["interpolate", "loop", "pad_zero", "pad_last"],
@@ -30,26 +29,28 @@ class SkeletonDataModule(pl.LightningDataModule):
             " by interpolation, looping the sequence or padding with either "
             "zeros or the last frame (default is {})".format(
                 DEFAULT_ADJUST_LEN))
-        parser.add_argument('-l',
-                            '--target_len',
-                            type=int,
-                            default=DEFAULT_TARGET_LEN,
-                            help="Number of frames to scale action sequences "
-                            "to (default is {})".format(DEFAULT_TARGET_LEN))
+        child_parser.add_argument(
+            '-l',
+            '--target_len',
+            type=int,
+            default=DEFAULT_TARGET_LEN,
+            help="Number of frames to scale action sequences "
+            "to (default is {})".format(DEFAULT_TARGET_LEN))
 
-        parser.add_argument(
+        child_parser.add_argument(
             '--num_workers',
             type=int,
             default=4,
             help="Number of workers to use for dataloaders (default is 4).")
 
-        return parent_parser
+        NTURGBD.add_argparse_args(parser)
+        return parser
 
     def __init__(self, **kwargs):
         super().__init__()
-        self._data = NTURGBD(kwargs["path"])
+        self._data = NTURGBD(**kwargs)
         self._data.set_cols("keypoints3D", "action")
-        self._data.set_split(kwargs["split"])
+        self.num_actions = len(self._data.actions)
 
         self._batch_size = kwargs["batch_size"]
         self._adjust_len = kwargs["adjust_len"]

@@ -1,12 +1,10 @@
-"""
-This implementation is strongly based on
-https://github.com/yysijie/st-gcn/blob/master/net/utils/tgcn.py
-"""
-from typing import Optional, Dict, Any
+from typing import Optional
 
 import torch
 
 from .graph import Graph
+from .graphlayouts import GraphLayout
+from .graphoptions import GraphOptions
 from .graphresidual import GraphResidual
 
 
@@ -23,7 +21,8 @@ class GraphConvolution(torch.nn.Module):
                  in_channels: int,
                  out_channels: int,
                  graph: Optional[Graph] = None,
-                 graph_options: Dict[str, Any] = {},
+                 graph_layout: Optional[GraphLayout] = None,
+                 graph_options: Optional[GraphOptions] = None,
                  temporal_kernel_size: int = 1,
                  temporal_stride: int = 1,
                  temporal_padding: int = 0,
@@ -31,6 +30,7 @@ class GraphConvolution(torch.nn.Module):
                  bias: bool = True,
                  batch_norm: bool = True,
                  residual: bool = False,
+                 nonlinearity: bool = True,
                  **kwargs) -> None:
         """
         Parameters
@@ -42,13 +42,17 @@ class GraphConvolution(torch.nn.Module):
         graph : Graph instance, optional (default is None)
             Optionally pass in a graph instance to operate on to allow sharing
             graphs between multiple convolutions.
-            If not given a graph instance will be created using the
-            graph_options.
-        graph_options : dict
-            Dictionary of options to be used as parameters when creating the
-            graph for this convolutional layer. See Graph class constructor for
-            list of possible options and values.
-            Ignored if graph instance was passed in.
+            If not given a graph instance will be created.
+        graph_layout : GraphLayout object, optional (default is None)
+            GraphLayout object defining the connections and the center node of
+            the graph to be created. Ignored if graph instance was passed in.
+            Must be specified if graph is not given.
+        graph_options : GraphOptions object, optional (default is None)
+            GraphOptions object defining various properties of the
+            graph to be created, such as components of the adjacency matrix and
+            normalisation method. See GraphOptions documentation for more
+            information. Ignored if graph instance was passed in. Must be
+            specified if graph is not given.
         temporal_kernel_size : int, optional (default is 1)
             Size of the convolutional kernel in the frame dimension.
         temporal_stride : int, optional (default is 1)
@@ -63,19 +67,24 @@ class GraphConvolution(torch.nn.Module):
             Whether to apply batch norm after the convolution
         residual : bool, optional (default is True)
             Whether to add a residual connection around the convolution block
+        nonlinearity : bool, optional (default is True)
+            If True a ReLU activation is applied before returning the output of
+            the convolution
         """
         super().__init__()
 
         if graph is None:
-            if ("data_dependent_adjacency" in graph_options
-                    and graph_options["data_dependent_adjacency"]):
-                dimensions = {
-                    "in_channels": in_channels,
-                    "embedding_dimension": out_channels // 4
-                }
-            else:
-                dimensions = {}
-            self.graph = Graph(**graph_options, **dimensions)  # type: ignore
+            if graph_layout is None:
+                raise ValueError("The graph layout needs to be specified when "
+                                 "not providing a graph instance")
+            if graph_options is None:
+                raise ValueError("The graph options need to be specified when "
+                                 "not providing a graph instance")
+            self.graph = Graph(graph_layout=graph_layout,
+                               graph_options=graph_options,
+                               in_channels=in_channels,
+                               out_channels=out_channels,
+                               **kwargs)
         else:
             self.graph = graph
         # Partition strategies with multiple subsets have several instances of
@@ -104,6 +113,8 @@ class GraphConvolution(torch.nn.Module):
             self.residual = GraphResidual(in_channels,
                                           out_channels,
                                           stride=temporal_stride)
+
+        self.nonlinearity = nonlinearity
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -151,4 +162,6 @@ class GraphConvolution(torch.nn.Module):
         if self.residual is not None:
             y += self.residual(x)
 
-        return torch.nn.functional.relu(y)
+        if self.nonlinearity:
+            y = torch.nn.functional.relu(y)
+        return y

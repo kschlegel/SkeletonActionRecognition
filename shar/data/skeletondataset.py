@@ -1,4 +1,4 @@
-from typing import Sequence, Optional, Tuple
+from typing import Sequence, Optional, Tuple, Union
 
 import numpy as np
 import cv2
@@ -11,7 +11,10 @@ class SkeletonDataset(Dataset):
 
     Expects a Sequence-type interface (providing __len__ and __getitem__) to
     the data, which returns the data as (keypoints, action_class) tuples, with
-    the keypoints in a (persons,frames,landmarks,dimensios) format.
+    the keypoints in a (persons,frames,landmarks,dimensios) format. Optionally
+    can also take a str to a numpy file containing the data in the same format,
+    i.e. an array of shape (batch, [keypoints,label],...) where [batch,0]
+    contains the keypoint array and [batch,1] the action id.
     Returns samples as tuples (keypoints, action_class) with the keypoints of
     shape either
     (persons, dimensions, frames, landmarks) or (dimensions, frames, landmarks)
@@ -24,18 +27,45 @@ class SkeletonDataset(Dataset):
     last frame. Warning: Only interpolation will currently also deal with
     sequences shorter than the target length.
     """
+    @staticmethod
+    def add_argparse_args(parser, default_target_len=None):
+        parser.add_argument(
+            '--adjust_len',
+            type=str,
+            choices=["interpolate", "loop", "pad_zero", "pad_last"],
+            default="interpolate",
+            help="Adjust the length of individual sequences to a common length"
+            " by interpolation, looping the sequence or padding with either "
+            "zeros or the last frame (default is 'interpolate')")
+        parser.add_argument('-l',
+                            '--target_len',
+                            type=int,
+                            default=default_target_len,
+                            help="Number of frames to scale action sequences "
+                            "to")
+        parser.add_argument(
+            '--num_persons',
+            type=int,
+            default=2,
+            help="Number of people to return (extra persons are discarded, "
+            "missing persons zero padded)")
+        return parser
+
     def __init__(self,
-                 data: Sequence,
+                 data: Union[Sequence, str],
                  adjust_len: Optional[str] = None,
                  target_len: Optional[int] = None,
                  num_persons: int = 2,
-                 keep_person_dim: bool = False) -> None:
+                 keep_person_dim: bool = False,
+                 **kwargs) -> None:
         """
         Parameters
         ----------
-        data : Sequence
+        data : Sequence or str
             A Sequence type object (providing __len__ and __getitem__)
-            providing access to the data.
+            providing access to the data. Or alternatively a filename of a
+            numpy file containing the data in appropriate shape (see class doc
+            for a description)
         adjust_len : str, optional (default is None)
             One of ('interpolate', 'loop', 'pad_zero', 'pad_last')
             Optionally adjust the length of each sequence to a fixed number of
@@ -55,7 +85,10 @@ class SkeletonDataset(Dataset):
             size 1. If False the keypoint data is returned as a 3D array
             without a person dimension.
         """
-        self._data = data
+        if isinstance(data, str):
+            self._data = np.load(data, allow_pickle=True)
+        else:
+            self._data = data
 
         if adjust_len is not None and target_len is None:
             raise ValueError("Target length must be specified when selecting "

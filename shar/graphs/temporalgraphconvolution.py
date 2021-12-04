@@ -19,6 +19,7 @@ class TemporalGraphConvolution(torch.nn.Module):
                  stride: int = 1,
                  batch_norm: bool = True,
                  residual: bool = False,
+                 nonlinearity: bool = True,
                  **kwargs) -> None:
         """
         Parameters
@@ -37,6 +38,9 @@ class TemporalGraphConvolution(torch.nn.Module):
         residual : bool, optional (default is True)
             Whether to include a residual connection around the temporal graph
             convolution
+        nonlinearity : bool, optional (default is True)
+            If True a ReLU activation is applied before returning the output of
+            the convolution
         """
         super().__init__()
 
@@ -63,6 +67,8 @@ class TemporalGraphConvolution(torch.nn.Module):
                                           out_channels,
                                           stride=stride)
 
+        self.nonlinearity = nonlinearity
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Parameters
@@ -83,4 +89,6 @@ class TemporalGraphConvolution(torch.nn.Module):
         if self.residual is not None:
             y += self.residual(x)
 
-        return torch.nn.functional.relu(y)
+        if self.nonlinearity:
+            y = torch.nn.functional.relu(y)
+        return y
