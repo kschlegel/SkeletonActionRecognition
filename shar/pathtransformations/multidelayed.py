@@ -40,15 +40,18 @@ class MultiDelayedTransform(torch.nn.Module):
         """
         batch, channels, frames, nodes = x.size()
 
+        # Empty target array with an extra dimension for each delay
         y = torch.zeros(
             (batch, self.delay + 1, channels, frames + self.delay, nodes),
             dtype=x.dtype,
             device=x.device)
 
+        # Copy the delayed paths into the target array
         for i in range(self.delay + 1):
             y[:, i, :, i:i + frames, :] = x
 
+        # Flatten the delay into the channels so that a n dimensional input
+        # path results in a n*(delay+1) dimensional output path
         y = torch.reshape(y, (batch, channels *
                               (self.delay + 1), frames + self.delay, nodes))
-
         return y
