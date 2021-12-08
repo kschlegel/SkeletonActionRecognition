@@ -1,8 +1,11 @@
 from typing import Sequence, Optional, Tuple, Union
+from warnings import warn
 
 import numpy as np
 import cv2
 from torch.utils.data import Dataset
+
+from shar._utils.argparser import WithDefaultsWrapper
 
 
 class SkeletonDataset(Dataset):
@@ -28,27 +31,42 @@ class SkeletonDataset(Dataset):
     sequences shorter than the target length.
     """
     @staticmethod
-    def add_argparse_args(parser, default_target_len=None):
-        parser.add_argument(
+    def add_argparse_args(parser,
+                          default_adjust_len: str = "interpolate",
+                          default_target_len: Optional[str] = None,
+                          default_num_persons: int = 2):
+        if isinstance(parser, WithDefaultsWrapper):
+            local_parser = parser
+        else:
+            local_parser = WithDefaultsWrapper(parser)
+        local_parser.add_argument(
             '--adjust_len',
             type=str,
             choices=["interpolate", "loop", "pad_zero", "pad_last"],
-            default="interpolate",
+            default=default_adjust_len,
             help="Adjust the length of individual sequences to a common length"
             " by interpolation, looping the sequence or padding with either "
-            "zeros or the last frame (default is 'interpolate')")
-        parser.add_argument('-l',
-                            '--target_len',
-                            type=int,
-                            default=default_target_len,
-                            help="Number of frames to scale action sequences "
-                            "to")
-        parser.add_argument(
+            "zeros or the last frame.")
+        local_parser.add_argument(
+            '-l',
+            '--target_len',
+            type=int,
+            default=default_target_len,
+            help="Number of frames to scale action sequences to")
+        local_parser.add_argument(
             '--num_persons',
             type=int,
-            default=2,
+            default=default_num_persons,
             help="Number of people to return (extra persons are discarded, "
             "missing persons zero padded)")
+        local_parser.add_argument(
+            '--keep_person_dim',
+            action="store_true",
+            help="Only relevevant if num_persons == 1. In that case if set "
+            "the keypoint data is returned as a 4D array with a person-"
+            "dimension of size 1. If not set the keypoint data is returned as "
+            "a 3D array without a person dimension.")
+
         return parser
 
     def __init__(self,
@@ -162,3 +180,36 @@ class SkeletonDataset(Dataset):
             keypoints = keypoints[:self._num_persons]
 
         return np.ascontiguousarray(keypoints, dtype=np.float32), action
+
+    def get_num_keypoints(self):
+        if len(self._data) == 0:
+            raise ValueError("No data to determine number of keypoints.")
+        else:
+            keypoints, __ = self._data[0]
+            # keypoints = (frame, landmark, coordinates) or
+            #             (person, frame, landmark, coordinates)
+        return keypoints.shape[-2]
+
+    def get_num_actions(self):
+        if len(self._data) == 0:
+            raise ValueError("No data to determine number of keypoints.")
+        else:
+            if isinstance(self._data, np.ndarray):
+                max_action = np.amax(self._data[:, 1])
+            else:
+                warn(
+                    "get_num_actions from sequence object is very inefficient!"
+                )
+                max_action = 0
+                for __, action in self._data:
+                    max_action = max(max_action, action)
+            return max_action + 1
+
+    def get_keypoint_dim(self):
+        if len(self._data) == 0:
+            raise ValueError("No data to determine number of keypoints.")
+        else:
+            keypoints, __ = self._data[0]
+            # keypoints = (frame, landmark, coordinates) or
+            #             (person, frame, landmark, coordinates)
+        return keypoints.shape[-1]

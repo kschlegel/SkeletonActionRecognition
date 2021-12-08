@@ -1,1 +1,3 @@
-opencv-python 
+opencv-python
+sklearn
+matplotlib
