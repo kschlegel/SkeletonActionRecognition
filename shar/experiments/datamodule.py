@@ -1,6 +1,7 @@
 import os
 import sys
 import importlib
+from typing import Optional, List
 
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
@@ -8,7 +9,7 @@ import numpy as np
 from tqdm import trange
 
 from shar.data import SkeletonDataset
-from shar._utils.argparser import WithDefaultsWrapper
+from shar._utils.argparser import WithDefaultsWrapper, ParserType
 
 # these refer to classes in the DatasetLoader package
 SUPPORTED_DATASETS = [
@@ -17,10 +18,28 @@ SUPPORTED_DATASETS = [
 
 
 class SkeletonDataModule(pl.LightningDataModule):
+    """
+    LightningDataModule wrapper for SkeletonDataset.
+
+    Supports loading data from file or via DatasetLoader package. Can save a
+    DatasetLoader generated dataset to local file for faster loading on
+    subsequent runs (useful e.g. in combination with subsetting of NTURGBD
+    provided by the DatasetLoader package
+    """
     @staticmethod
-    def add_data_specific_args(parent_parser,
-                               default_batch_size=32,
-                               default_target_len=100):
+    def add_data_specific_args(parent_parser: ParserType,
+                               default_batch_size: int = 32,
+                               default_target_len: int = 100) -> ParserType:
+        """
+        Adds data loading specific command line args (+SkeletonDataset args)
+
+        Parameters
+        ----------
+        default_batch_size : int, optional (default is 32)
+            Default batch size
+        default_target_len : int, optional (default is 100)
+            Default target len for SkeletonDataset
+        """
         if isinstance(parent_parser, WithDefaultsWrapper):
             local_parser = parent_parser
         else:
@@ -62,12 +81,11 @@ class SkeletonDataModule(pl.LightningDataModule):
             help="Whether to use 2D or 3D keypoint data. Only used if the "
             "chosen dataset provides both kinds of keypoints.")
 
+        dataset: Optional[str] = None
         for i, arg in enumerate(sys.argv):
             if arg == "-ds" or arg == "--dataset":
                 dataset = sys.argv[i + 1]
                 break
-        else:
-            dataset = None
         if dataset is not None:
             dataset_module = SkeletonDataModule._get_datasetloader_module(
                 dataset)
@@ -75,12 +93,29 @@ class SkeletonDataModule(pl.LightningDataModule):
 
         return parent_parser
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """
+        Prepare dataloading depending on choice between DatasetLoader and file.
+
+        Parameters
+        ----------
+        kwargs : dict
+            Pass the full dictionary of command line args into here.
+        """
         super().__init__()
         if kwargs["data_files"] is None and kwargs["dataset"] is None:
             raise Exception(
                 "At least on of --dataset and --data_files must be specified")
 
+        # Declare vars to hold basic info about data. If using DatasetLoader
+        # everything can be deduced from there and we can initialise here in
+        # the constructor. If loading from data_files without a DatasetLoader
+        # specified we need to figure these out when the data is loaded in
+        # setup() (class_labels will simply default to integers in this case)
+        self.keypoint_dim: Optional[int] = None
+        self.num_keypoints: Optional[int] = None
+        self.num_actions: Optional[int] = None
+        self.class_labels: Optional[List[str]] = None
         if kwargs["data_files"]:
             self._trainingset = kwargs["data_files"] + "_training.npy"
             self._testset = kwargs["data_files"] + "_test.npy"
@@ -112,14 +147,6 @@ class SkeletonDataModule(pl.LightningDataModule):
             self.num_keypoints = len(self._data_loader.landmarks)
             self.num_actions = len(self._data_loader.actions)
             self.class_labels = self._data_loader.actions
-        else:
-            # If loading from data_files without a DatasetLoader specified we
-            # need to figure these out when the data is loaded in setup()
-            # (class_labels will simply default to integers in this case)
-            self.keypoint_dim = None
-            self.num_keypoints = None
-            self.num_actions = None
-            self.class_labels = None
 
         self._batch_size = kwargs["batch_size"]
         self._adjust_len = kwargs["adjust_len"]
@@ -127,6 +154,12 @@ class SkeletonDataModule(pl.LightningDataModule):
         self._num_workers = kwargs["num_workers"]
 
     def setup(self, stage=None):
+        """
+        Create SkeletonDataset objects.
+
+        If no DatasetLoader is used structural information about the data is
+        not known until loading so is initialised here.
+        """
         self._trainingdata = SkeletonDataset(data=self._trainingset,
                                              adjust_len=self._adjust_len,
                                              target_len=self._target_len)
@@ -155,7 +188,16 @@ class SkeletonDataModule(pl.LightningDataModule):
         return val_loader
 
     @staticmethod
-    def _get_datasetloader_module(module_name):
+    def _get_datasetloader_module(module_name: str):
+        """
+        Imports and returns a DatasetLoader object based on the selection.
+
+        Parameters
+        ----------
+        module_name : string
+            The name of the DatasetLoader module to use, case-sensitive (one
+            from the list of supported modules at the top of this file)
+        """
         if module_name is not None:
             module_path = "datasetloader." + module_name.lower()
             if importlib.util.find_spec(module_path) is not None:
@@ -163,7 +205,21 @@ class SkeletonDataModule(pl.LightningDataModule):
                 return getattr(module, module_name)
         raise Exception("Invalid dataset!")
 
-    def create_datafiles(self, data_files):
+    def create_datafiles(self, data_files: str) -> None:
+        """
+        Save current data to a file _iff_ the file does not yet exist.
+
+        This allows repeated experiment calls with the same configuration, the
+        dataset will be genrated and saved on the first and subsequent runs
+        will directly use the file.
+
+        Parameters
+        ----------
+        data_files : str
+            Path and first part of the file name of the datafiles. The filename
+            will automatically be suffixed by the part of the data saved
+            (_training or _test) and the filetype (.npy)
+        """
         for datapart in ("training", "test"):
             filename = data_files + "_" + datapart + ".npy"
             if not os.path.exists(filename):

@@ -47,7 +47,7 @@ class DistancePartition(GraphPartition):
     distance_steps list all nodes at that distance from the root node form
     another subgroup.
     """
-    def __init__(self, include_self_loops: bool = False, **kwargs):
+    def __init__(self, include_self_loops: bool = False, **kwargs) -> None:
         self._include_self_loops = include_self_loops
 
     def apply(self, adjacency_matrix: torch.Tensor,
@@ -70,7 +70,7 @@ class SpatialPartition(GraphPartition):
     or as close as the root node to the skeletons center node (centripetal
     nodes) and nodes further away from the skeletons centre (centrifugal nodes)
     """
-    def __init__(self, center_node: int, **kwargs):
+    def __init__(self, center_node: int, **kwargs) -> None:
         self._center_node = center_node
 
     def apply(self, adjacency_matrix: torch.Tensor,

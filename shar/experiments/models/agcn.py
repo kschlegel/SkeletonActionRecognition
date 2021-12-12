@@ -3,26 +3,23 @@ from shar.datatransforms import Person2Batch
 from shar.normalisations import ChannelwiseBatchNorm
 from shar.graphs import SpatioTemporalGraphConvolution
 from shar.graphs.graphlayouts import KinectV2
-from shar.graphs.graphoptions import ST_GCN_Options
+from shar.graphs.graphoptions import AGCN_Options
 
 DEFAULT_NUM_LAYERS = 3
-DEFAULT_PARTITION_STRATEGY = "uniform"
 
 
-class STGCN(torch.nn.Module):
+class AGCN(torch.nn.Module):
     @staticmethod
     def add_argparse_args(parent_parser):
-        parser = parent_parser.add_argument_group("ST-GCN specific arguments")
-        parser.add_argument('--edge_importance_weighting',
+        parser = parent_parser.add_argument_group("AGCN specific arguments")
+        parser.add_argument('--no_learnable_adjacency',
                             action='store_true',
-                            help="Add a learnable multiplicative edge "
-                            "importance weighting to the adjacency matrix.")
-        parser.add_argument(
-            '--partition_strategy',
-            type=str,
-            choices=["uniform", "distance", "spatial"],
-            default=DEFAULT_PARTITION_STRATEGY,
-            help="Partition strategy used to partition node neighbour sets.")
+                            help="Add a learnable component to the adjacency "
+                            "matrix.")
+        parser.add_argument('--no_data_dependent_adjacency',
+                            action='store_true',
+                            help="Add a data dependent component to the "
+                            "adjacency matrix.")
         parser.add_argument(
             '--layers',
             type=int,
@@ -38,8 +35,8 @@ class STGCN(torch.nn.Module):
                  num_keypoints,
                  num_classes,
                  num_persons,
-                 partition_strategy=DEFAULT_PARTITION_STRATEGY,
-                 edge_importance_weighting=False,
+                 no_learnable_adjacency=False,
+                 no_data_dependent_adjacency=False,
                  layers=DEFAULT_NUM_LAYERS,
                  **kwargs):
         super().__init__()
@@ -48,14 +45,14 @@ class STGCN(torch.nn.Module):
             "graph_layout":
             KinectV2,
             "graph_options":
-            ST_GCN_Options(partition_strategy=partition_strategy,
-                           edge_importance_weighting=edge_importance_weighting)
+            AGCN_Options(
+                learnable_adjacency=not no_learnable_adjacency,
+                data_dependent_adjacency=not no_data_dependent_adjacency)
         }
 
-        self.data_batch_norm = ChannelwiseBatchNorm(in_channels=keypoint_dim,
-                                                    landmarks=num_keypoints)
-        self.person2batch = Person2Batch(person_dimension=1,
-                                         num_persons=num_persons)
+        self.data_batch_norm = ChannelwiseBatchNorm(in_channels=3,
+                                                    landmarks=25)
+        self.person2batch = Person2Batch(person_dimension=1, num_persons=2)
 
         temporal_kernel_size = 9
         # Define output_channels for all layers, first item is the input dim of
@@ -73,12 +70,9 @@ class STGCN(torch.nn.Module):
                     residual=False,
                     **graph)
             ]
-
         self.gcn_networks = torch.nn.ModuleList(module_list)
 
-        self.fully_connected = torch.nn.Conv2d(channels[layers],
-                                               num_classes,
-                                               kernel_size=1)
+        self.fully_connected = torch.nn.Linear(channels[layers], num_classes)
 
     def forward(self, x):
         # Move persons into the batch dimension
@@ -91,14 +85,13 @@ class STGCN(torch.nn.Module):
         for gcn in self.gcn_networks:
             x = gcn(x)
 
-        # Global pooling
-        x = torch.nn.functional.avg_pool2d(x, x.size()[2:])
+        # average results accross nodes and remaining frames
+        x = x.view(x.shape[:2] + (-1, ))
+        # (batch*person, channels, frame*node)
+        x = x.mean(2)
 
         # Aggregate results for people of each batch element
         x = self.person2batch.extract_persons(x)
-
         # Predict
         x = self.fully_connected(x)
-        x = x.view(x.size(0), -1)
-
         return x

@@ -1,6 +1,8 @@
 from __future__ import annotations
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Union
 from dataclasses import dataclass, asdict
+
+EdgeList = List[Tuple[int, int]]
 
 
 @dataclass
@@ -21,7 +23,7 @@ class GraphLayout:
         The central node of the graph. Only needed when using spatial
         partitioning.
     """
-    edges: List[Tuple[int, int]]
+    edges: EdgeList
     center_node: int = 0
 
     @classmethod
@@ -65,7 +67,7 @@ class GraphLayout:
         """
         return cls(edges=[], center_node=0)
 
-    def asdict(self):
+    def asdict(self) -> Dict[str, Union[EdgeList, int]]:
         """
         Convert to a dictionary.
 

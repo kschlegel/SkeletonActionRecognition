@@ -6,6 +6,7 @@ from shar.pathtransformations import (AccumulativeTransform, EmbeddingLayer,
                                       TimeIncorporatedTransform)
 from shar.signatures import LogSigRNN as LogSigRNNLayer
 
+DEFAULT_LOGSIG_LVL = 2
 DEFAULT_NUM_SEGMENTS = 50
 DEFAULT_LSTM_CHANNELS = 96
 
@@ -14,6 +15,10 @@ class LogSigRNN(torch.nn.Module):
     @staticmethod
     def add_argparse_args(parent_parser):
         parser = parent_parser.add_argument_group("LogSigRNN specific")
+        parser.add_argument('--logsig_lvl',
+                            type=int,
+                            default=DEFAULT_LOGSIG_LVL,
+                            help="Level of truncation of the log-signature.")
         parser.add_argument('--num_segments',
                             type=int,
                             default=DEFAULT_NUM_SEGMENTS,
@@ -34,6 +39,7 @@ class LogSigRNN(torch.nn.Module):
                  num_keypoints,
                  num_classes,
                  num_persons,
+                 logsig_lvl=DEFAULT_LOGSIG_LVL,
                  num_segments=DEFAULT_NUM_SEGMENTS,
                  lstm_channels=DEFAULT_LSTM_CHANNELS,
                  embedding_layer=None,
@@ -52,7 +58,7 @@ class LogSigRNN(torch.nn.Module):
                                                   landmarks=num_keypoints)
             self.accumulative = AccumulativeTransform()
             self.time_incorporated = TimeIncorporatedTransform()
-            logsigrnn_inchannels = 31
+            logsigrnn_inchannels = embedding_layer + 1
         else:
             logsigrnn_inchannels = keypoint_dim * num_keypoints
 
@@ -71,7 +77,7 @@ class LogSigRNN(torch.nn.Module):
         # Normalise data
         x = self.data_batch_norm(x)
 
-        if self.embedding_layer:
+        if self.embedding_layer is not None:
             x = self.embedding_layer(x)
             x = self.accumulative(x)
             x = self.time_incorporated(x)

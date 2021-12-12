@@ -1,3 +1,4 @@
+pytorch-lightning
 opencv-python
 sklearn
 matplotlib

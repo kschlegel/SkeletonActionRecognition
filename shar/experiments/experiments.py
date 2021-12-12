@@ -1,4 +1,4 @@
-from typing import Union, List
+from typing import Optional, Union, List
 import argparse
 import os
 import sys
@@ -12,7 +12,34 @@ from shar._utils.argparser import WithDefaultsWrapper
 
 
 class Experiments:
-    def __init__(self, model_dirs: Union[str, List[str]] = "./models"):
+    """
+    Run standard SHAR experiments with an extensive command line interface.
+
+    This class provides an way to run standard experients on different shar
+    models with minimal effort, with an extensive list of command line options
+    to customise individual runs.
+
+    To add models for experimentation add one or more folders as the
+    constructor argument. All python file in a given path that are not private
+    (start with an underscore '_') are assumed to contain a model with the
+    exact same name, up to capitalisations (e.g. a model LogSigRNN in the file
+    logsigrnn.py, any naming so that class_name.lower() == "filename_without
+    .py" is valid)
+    For any model added this way if the model class contains a method
+    'add_argparse_args(parser)' adding command line arguments to the given
+    parser, these options will automatically be added to the Experiments
+    command line interface. Moreover, a number of arguments to select and
+    configure the data, optimizer etc used for training are added. Lastly, all
+    PyTorch Lightning command line options are exposed.
+
+    To use this class to run experiments all you need is the following code:
+        from shar.experiments import Experiments
+        exp = Experiments(PATH_TO_YOUR_MODELS)
+        exp.run()
+
+    """
+    def __init__(self,
+                 model_dirs: Optional[Union[str, List[str]]] = None) -> None:
         """
         Parameters
         ----------
@@ -22,8 +49,11 @@ class Experiments:
             given directory is assumed to implement a model.
         """
         self._models = {}
+        if model_dirs is None:
+            model_dirs = []
         if isinstance(model_dirs, str):
             model_dirs = [model_dirs]
+        model_dirs += [os.path.join(os.path.dirname(__file__), "models")]
         for model_dir in model_dirs:
             for filename in os.listdir(model_dir):
                 if not filename.startswith("_") and filename.endswith(".py"):
@@ -31,9 +61,11 @@ class Experiments:
                     spec = importlib.util.spec_from_file_location(
                         model_name, os.path.join(model_dir,
                                                  model_name + ".py"))
+                    if spec is None:
+                        raise Exception("Could not find model", model_name)
                     module = importlib.util.module_from_spec(spec)
                     sys.modules[model_name] = module
-                    spec.loader.exec_module(module)
+                    spec.loader.exec_module(module)  # type: ignore
 
                     for name in dir(sys.modules[model_name]):
                         if name.lower() == model_name:
@@ -42,11 +74,17 @@ class Experiments:
 
         self.parse_arguments()
 
-    def parse_arguments(self):
-        parser = argparse.ArgumentParser()
-        parser = pl.Trainer.add_argparse_args(parser)
+    def parse_arguments(self) -> None:
+        """
+        Adds command line options for all experiment modules.
 
-        parser = WithDefaultsWrapper(parser)
+        This is called automatically by the constructor so should not need to
+        be called manually.
+        """
+        argparser = argparse.ArgumentParser()
+        argparser = pl.Trainer.add_argparse_args(argparser)
+
+        parser = WithDefaultsWrapper(argparser)
         parser_group = parser.add_argument_group(
             "Experiments specific arguments)")
         parser_group.add_argument('--model_name',
@@ -63,24 +101,39 @@ class Experiments:
             '--experiment_name',
             type=str,
             help="Optional additional experiment identifier.")
+        parser.add_argument('--random_seed',
+                            type=int,
+                            help="If given seeds (all) random number "
+                            "generators with the given seed.")
 
         parser = SkeletonDataModule.add_data_specific_args(parser)
         parser = ActionRecognitionModule.add_model_specific_args(parser)
         # -------
+        model_name: Optional[str] = None
         for i, arg in enumerate(sys.argv):
             if arg == "--model_name":
                 model_name = sys.argv[i + 1]
                 break
-        else:
-            model_name = None
         if model_name is not None:
             if hasattr(self._models[model_name], "add_argparse_args"):
                 parser = self._models[model_name].add_argparse_args(parser)
 
         self._hparams = parser.parse_args()
 
-    def run(self):
+    def run(self) -> None:
+        """
+        Run an experiment with the setting defined through the CLI.
+
+        Does everything from setting up the data to running the experiment
+        based on the command line options which have been established by the
+        end of the constructor. Thus each call to run will run an identical
+        (but independent from previous runs) experiment based on CLI options.
+        """
         hparams_dict = vars(self._hparams)
+
+        if self._hparams.random_seed is not None:
+            pl.utilities.seed.seed_everything(seed=self._hparams.random_seed,
+                                              workers=True)
 
         data = SkeletonDataModule(**hparams_dict)
         if data.keypoint_dim is None or data.num_keypoints is None:
@@ -109,13 +162,16 @@ class Experiments:
             os.mkdir(experiment_name)
         if not os.path.exists(checkpoint_path):
             os.mkdir(checkpoint_path)
-        loggers = [
+        loggers: List[pl.loggers.base.LightningLoggerBase] = [
             pl.loggers.TensorBoardLogger(save_dir=".",
                                          name=experiment_name,
                                          default_hp_metric=False)
         ]
+        save_dir = loggers[-1].save_dir
+        if save_dir is None:
+            save_dir = "."
         loggers += [
-            pl.loggers.CSVLogger(save_dir=loggers[-1].save_dir,
+            pl.loggers.CSVLogger(save_dir=save_dir,
                                  name=experiment_name,
                                  version=loggers[-1].version)
         ]
