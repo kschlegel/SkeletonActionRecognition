@@ -2,3 +2,4 @@ pytorch-lightning
 opencv-python
 sklearn
 matplotlib
+git+git://github.com/kschlegel/DatasetLoader.git@2bca57b59d90d8580f6f7684f5651a584fb33d05
