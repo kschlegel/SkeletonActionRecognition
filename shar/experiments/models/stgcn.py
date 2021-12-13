@@ -2,7 +2,7 @@ import torch
 from shar.datatransforms import Person2Batch
 from shar.normalisations import ChannelwiseBatchNorm
 from shar.graphs import SpatioTemporalGraphConvolution
-from shar.graphs.graphlayouts import KinectV2
+from shar.graphs.graphlayouts import get_layout_by_datasetname
 from shar.graphs.graphoptions import ST_GCN_Options
 
 DEFAULT_NUM_LAYERS = 3
@@ -46,7 +46,7 @@ class STGCN(torch.nn.Module):
 
         graph = {
             "graph_layout":
-            KinectV2,
+            get_layout_by_datasetname(kwargs["dataset"]),
             "graph_options":
             ST_GCN_Options(partition_strategy=partition_strategy,
                            edge_importance_weighting=edge_importance_weighting)

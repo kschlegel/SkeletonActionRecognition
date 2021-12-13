@@ -4,7 +4,7 @@ from shar.datatransforms import Person2Batch
 from shar.normalisations import ChannelwiseBatchNorm
 from shar.signatures import LogSigRNN
 from shar.graphs import GraphConvolution
-from shar.graphs.graphlayouts import KinectV2
+from shar.graphs.graphlayouts import get_layout_by_datasetname
 from shar.graphs.graphoptions import MS_GCN_Options
 
 DEFAULT_NUM_LAYERS = 1
@@ -52,7 +52,7 @@ class GCNLogSigRNN(torch.nn.Module):
 
         graph = {
             "graph_layout":
-            KinectV2,
+            get_layout_by_datasetname(kwargs["dataset"]),
             "graph_options":
             MS_GCN_Options(max_neighbour_distance=max_neighbour_distance)
         }
