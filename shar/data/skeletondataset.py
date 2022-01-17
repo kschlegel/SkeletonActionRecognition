@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 from torch.utils.data import Dataset
 
-from shar._utils.argparser import WithDefaultsWrapper
+from shar._utils.argparser import WithDefaultsWrapper, ParserType
 
 
 class SkeletonDataset(Dataset):
@@ -31,10 +31,25 @@ class SkeletonDataset(Dataset):
     sequences shorter than the target length.
     """
     @staticmethod
-    def add_argparse_args(parser,
+    def add_argparse_args(parser: ParserType,
                           default_adjust_len: str = "interpolate",
-                          default_target_len: Optional[str] = None,
-                          default_num_persons: int = 2):
+                          default_target_len: Optional[int] = None,
+                          default_num_persons: int = 2) -> ParserType:
+        """
+        Add skeleton dataset options to argparser.
+
+        Adds command line options for adjusting the length and the person
+        dimension of individual sequences.
+
+        Parameters
+        ----------
+        default_adjust_len : str, optional (default is 'interpolate')
+            Sets the default value for the adjust_len parameter.
+        default_target_len : int, optional (default is None)
+            Sets the default value for the target_len parameter.
+        default_num_persons : int, optional (default is 2)
+            Sets the default value for the num_persons parameter.
+        """
         if isinstance(parser, WithDefaultsWrapper):
             local_parser = parser
         else:
@@ -117,9 +132,31 @@ class SkeletonDataset(Dataset):
         self._keep_person_dim = keep_person_dim
 
     def __len__(self) -> int:
+        """
+        Returns the number of samples in the dataset.
+        """
         return len(self._data)
 
     def __getitem__(self, index: int) -> Tuple[np.ndarray, int]:
+        """
+        Get keypoints and action label for given sequence.
+
+        Adjusts sequence length and person dimension as defined by constructor
+        arguments.
+
+        Parameters
+        ----------
+        index : int
+            Index of the dataset sample
+
+        Returns
+        -------
+        keypoints, action tuple
+            Keypoints is numpy array of shape
+               (person, coordinates, frame, landmark) or
+               (coordinates, frame, landmark)
+            action is integer id
+        """
         keypoints, action = self._data[index]
         if len(keypoints.shape) == 3:
             # if data has no person dimension temporarily add one
@@ -181,7 +218,13 @@ class SkeletonDataset(Dataset):
 
         return np.ascontiguousarray(keypoints, dtype=np.float32), action
 
-    def get_num_keypoints(self):
+    def get_num_keypoints(self) -> int:
+        """
+        Determines the number of keypoints from the given data.
+
+        Useful when loading data directly from a file and the info is otw not
+        known.
+        """
         if len(self._data) == 0:
             raise ValueError("No data to determine number of keypoints.")
         else:
@@ -190,7 +233,15 @@ class SkeletonDataset(Dataset):
             #             (person, frame, landmark, coordinates)
         return keypoints.shape[-2]
 
-    def get_num_actions(self):
+    def get_num_actions(self) -> int:
+        """
+        Determines the number of actions from the given data.
+
+        Useful when loading data directly from a file and the info is otw not
+        known. Very inefficient though as it requires going through the data,
+        if there is a direct way of knowing the number of actions that should
+        be preferred.
+        """
         if len(self._data) == 0:
             raise ValueError("No data to determine number of keypoints.")
         else:
@@ -205,7 +256,13 @@ class SkeletonDataset(Dataset):
                     max_action = max(max_action, action)
             return max_action + 1
 
-    def get_keypoint_dim(self):
+    def get_keypoint_dim(self) -> int:
+        """
+        Determines the dimension of keypoints from the given data.
+
+        Useful when loading data directly from a file and the info is otw not
+        known.
+        """
         if len(self._data) == 0:
             raise ValueError("No data to determine number of keypoints.")
         else:

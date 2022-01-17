@@ -1,18 +1,31 @@
+from typing import List, Optional
+
 import torch
 import pytorch_lightning as pl
 from torchmetrics import Accuracy, AveragePrecision, ConfusionMatrix
 from sklearn.metrics import ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 
-from shar._utils.argparser import WithDefaultsWrapper
+from shar._utils.argparser import WithDefaultsWrapper, ParserType
 
 DEFAULT_LR = 0.001
 DEFAULT_OPTIMIZER = "adam"
 
 
 class ActionRecognitionModule(pl.LightningModule):
+    """
+    Implements the training mechanics.
+
+    The general method of training and what metrics to compute is going to be
+    largely the same between many experiments within a given task such as SHAR.
+    This module implements the standard classification task with commonly used
+    metrics to compute.
+    """
     @staticmethod
-    def add_model_specific_args(parent_parser):
+    def add_model_specific_args(parent_parser: ParserType) -> ParserType:
+        """
+        Adds command line args relating to optimization and metrics.
+        """
         if isinstance(parent_parser, WithDefaultsWrapper):
             local_parser = parent_parser
         else:
@@ -46,18 +59,39 @@ class ActionRecognitionModule(pl.LightningModule):
         return parent_parser
 
     def __init__(self,
-                 model,
-                 num_classes,
-                 lr=DEFAULT_LR,
-                 class_labels=None,
-                 mAP=False,
-                 confusion_matrix=False,
-                 training_metrics=False,
-                 parameter_histograms=False,
+                 model: torch.nn.Module,
+                 num_classes: int,
+                 lr: float = DEFAULT_LR,
+                 class_labels: List[str] = None,
+                 mAP: bool = False,
+                 confusion_matrix: bool = False,
+                 training_metrics: bool = False,
+                 parameter_histograms: bool = False,
                  **kwargs):
+        """
+        model : torch.nn.Module object
+            The model to train
+        num_classes : int
+            Number of action classes in the data
+        lr : float, optional (default is defined at the top of the file)
+            Learning rate
+        class_labels : list of str, optional (default is None)
+            Only relevant when generating confusion matrices. In this case if
+        mAP : bool, optional (default is False)
+            If True, compute mean average precision metric
+        confusion_matrix : bool, optional (default is False)
+            If True, generate confusion matrices for validation steps
+        training_metrics : bool, optional (default is False)
+            If True, compute metrics also for training steps
+        parameter_histograms : bool, optional (default is False)
+            If True, generate histograms of parameter norm and gradient norms
+            after training steps
+        kwargs : dict
+            Pass the full dictionary of command line args into here.
+        """
         super().__init__()
         # log module specific command line arguments
-        self.save_hyperparameters('num_classes', 'lr')
+        self.save_hyperparameters('lr')
         # log model class
         self.save_hyperparameters(
             {"model": str(model.__class__).split(".")[-1][:-2]})
@@ -78,24 +112,22 @@ class ActionRecognitionModule(pl.LightningModule):
         self.accuracy = Accuracy()
         if training_metrics:
             self.train_accuracy = Accuracy()
+        self.mAP: Optional[AveragePrecision] = None
         if mAP:
             self.mAP = AveragePrecision(num_classes=num_classes)
             if training_metrics:
                 self.train_mAP = AveragePrecision(num_classes=num_classes)
-        else:
-            self.mAP = None
 
+        self.confusion_matrix: Optional[ConfusionMatrix] = None
         if confusion_matrix:
             self.confusion_matrix = ConfusionMatrix(num_classes=num_classes,
                                                     compute_on_step=False,
                                                     normalize="true")
             self._class_labels = class_labels
-        else:
-            self.confusion_matrix = None
 
         self._parameter_histograms = parameter_histograms
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
         predictions = self.model(x)
         predictions = torch.argmax(predictions, dim=1)
         return predictions

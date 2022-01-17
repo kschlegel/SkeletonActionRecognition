@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Dict
 from dataclasses import dataclass, asdict
 from functools import partial
 
@@ -72,7 +72,7 @@ class GraphOptions:
     learnable_adjacency: bool = False
     data_dependent_adjacency: bool = False
 
-    def asdict(self):
+    def asdict(self) -> Dict[str, Union[bool, int, str, GraphPartition]]:
         """
         Convert to a dictionary.
 
@@ -87,7 +87,7 @@ class GraphOptions:
 ST_GCN_Options = partial(GraphOptions,
                          max_neighbour_distance=1,
                          dilation=1,
-                         include_self_loops="False",
+                         include_self_loops=False,
                          normalisation_method="mean_pooling",
                          normalise_first=True,
                          learnable_adjacency=False,

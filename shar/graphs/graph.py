@@ -196,9 +196,10 @@ class Graph(torch.nn.Module):
                 partition_strategy = UniformPartition()
             elif graph_options.partition_strategy == 'distance':
                 partition_strategy = DistancePartition(
-                    **graph_options.asdict())
+                    **graph_options.asdict())  # type: ignore
             elif graph_options.partition_strategy == 'spatial':
-                partition_strategy = SpatialPartition(**graph_layout.asdict())
+                partition_strategy = SpatialPartition(
+                    **graph_layout.asdict())  # type: ignore
             else:
                 raise ValueError("Invalid partition strategy")
         else:

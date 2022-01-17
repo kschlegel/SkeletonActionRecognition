@@ -4,31 +4,57 @@ from shar.datatransforms import Person2Batch
 from shar.normalisations import ChannelwiseBatchNorm
 from shar.signatures import LogSigRNN
 from shar.graphs import GraphConvolution
-from shar.graphs.graphlayouts import KinectV2
+from shar.graphs.graphlayouts import get_layout_by_datasetname
 from shar.graphs.graphoptions import MS_GCN_Options
+
+DEFAULT_NUM_LAYERS = 1
+DEFAULT_LOGSIG_LVL = 2
+DEFAULT_MAX_NEIGHBOUR_DISTANCE = 13
 
 
 class GCNLogSigRNN(torch.nn.Module):
     @staticmethod
-    def add_stgcn_specific_args(parent_parser):
-        parser = parent_parser.add_argument_group("GCNLogSigRNN specific")
+    def add_argparse_args(parent_parser):
+        parser = parent_parser.add_argument_group(
+            "GCNLogSigRNN specific arguments")
+        parser.add_argument('--logsig_lvl',
+                            type=int,
+                            default=DEFAULT_LOGSIG_LVL,
+                            help="Level of truncation of the log-signature.")
+        parser.add_argument(
+            '--max_neighbour_distance',
+            type=int,
+            default=DEFAULT_MAX_NEIGHBOUR_DISTANCE,
+            help="Maximal distance between nodes of the skeleton graph for "
+            "the nodes to be considered neighbours.")
         parser.add_argument('--layers',
                             type=int,
-                            default=1,
+                            default=DEFAULT_NUM_LAYERS,
                             choices=[1, 2],
                             help="Number of GCN+LogSigRNN blocks.")
+        return parent_parser
 
-    def __init__(self, num_classes, num_gcn_scales=13, layers=1, **kwargs):
+    def __init__(self,
+                 keypoint_dim,
+                 num_keypoints,
+                 num_classes,
+                 num_persons,
+                 logsig_lvl=DEFAULT_LOGSIG_LVL,
+                 max_neighbour_distance=DEFAULT_MAX_NEIGHBOUR_DISTANCE,
+                 layers=DEFAULT_NUM_LAYERS,
+                 **kwargs):
         super().__init__()
 
-        self.data_batch_norm = ChannelwiseBatchNorm(in_channels=3,
-                                                    landmarks=25)
-        self.person2batch = Person2Batch(person_dimension=1, num_persons=2)
+        self.data_batch_norm = ChannelwiseBatchNorm(in_channels=keypoint_dim,
+                                                    landmarks=num_keypoints)
+        self.person2batch = Person2Batch(person_dimension=1,
+                                         num_persons=num_persons)
 
         graph = {
-            "graph_layout": KinectV2,
+            "graph_layout":
+            get_layout_by_datasetname(kwargs["dataset"]),
             "graph_options":
-            MS_GCN_Options(max_neighbour_distance=num_gcn_scales)
+            MS_GCN_Options(max_neighbour_distance=max_neighbour_distance)
         }
 
         channels = [3, 96, 192]
@@ -46,7 +72,7 @@ class GCNLogSigRNN(torch.nn.Module):
             module_list += [
                 LogSigRNN(
                     in_channels=channels[i + 1],
-                    logsignature_lvl=2,
+                    logsignature_lvl=logsig_lvl,
                     num_segments=num_segments[i],
                     out_channels=channels[i + 1],
                 )

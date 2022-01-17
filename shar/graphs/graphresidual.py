@@ -35,7 +35,7 @@ class GraphResidual(torch.nn.Module):
                                             kernel_size=1,
                                             stride=(stride, 1))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Parameters
         ----------

@@ -2,3 +2,4 @@ __pycache__
 dist/
 SkeletonActionRecognition.egg-info/
 *#*#
+.mypy_cache

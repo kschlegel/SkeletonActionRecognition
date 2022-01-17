@@ -56,10 +56,9 @@ class LogSigRNN(torch.nn.Module):
         version = torch.__version__.split(".")
         if int(version[0]) == 1 and int(version[1]) < 7:
             if parallelize_signatures:
-                warnings.warn(
-                    "Computing signatures in parallel requires at least PyTorch "
-                    "version 1.7.0. Defaulting to sequential signature computation."
-                )
+                warnings.warn("Computing signatures in parallel requires at "
+                              "least PyTorch version 1.7.0. Defaulting to "
+                              "sequential signature computation.")
             parallelize_signatures = False
         if parallelize_signatures:
             SignatureModel = _SegmentSignatures

@@ -26,7 +26,7 @@ class AccumulativeTransform(torch.nn.Module):
             The value at each frame t is the sum of all frames in the input up
             to including t.
         """
-        partial_sums = torch.zeros(x.shape, dtype=x.dtype)
+        partial_sums = torch.zeros(x.shape, dtype=x.dtype, device=x.device)
         partial_sums[:, :, 0] = x[:, :, 0]
         for i in range(1, x.shape[2]):
             partial_sums[:, :, i] = partial_sums[:, :, i - 1] + x[:, :, i]

@@ -5,7 +5,18 @@ class EmbeddingLayer(torch.nn.Module):
     """
     Computes a low-dimensional embedding of a spatio-temporal path.
     """
-    def __init__(self, in_channels, out_channels, landmarks):
+    def __init__(self, in_channels: int, out_channels: int,
+                 num_keypoints: int) -> None:
+        """
+        Parameters
+        ----------
+        in_channels : int
+            The number of input channels per node
+        out_channels : int
+            The number of output channels per node
+        num_keypoints : int
+            Number of keypoints in the data
+        """
         super().__init__()
         self.convolutions = torch.nn.Sequential(
             torch.nn.Conv2d(in_channels=in_channels,
@@ -16,7 +27,7 @@ class EmbeddingLayer(torch.nn.Module):
                             kernel_size=(3, 1),
                             padding=(1, 0)))
 
-        self.fully_connected = torch.nn.Conv1d(in_channels=16 * landmarks,
+        self.fully_connected = torch.nn.Conv1d(in_channels=16 * num_keypoints,
                                                out_channels=out_channels,
                                                kernel_size=1)
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Union
 from dataclasses import dataclass, asdict
+
+EdgeList = List[Tuple[int, int]]
 
 
 @dataclass
@@ -21,7 +23,7 @@ class GraphLayout:
         The central node of the graph. Only needed when using spatial
         partitioning.
     """
-    edges: List[Tuple[int, int]]
+    edges: EdgeList
     center_node: int = 0
 
     @classmethod
@@ -65,7 +67,7 @@ class GraphLayout:
         """
         return cls(edges=[], center_node=0)
 
-    def asdict(self):
+    def asdict(self) -> Dict[str, Union[EdgeList, int]]:
         """
         Convert to a dictionary.
 
@@ -86,3 +88,52 @@ KinectV2 = GraphLayout(edges=[(0, 1), (1, 20), (2, 20), (3, 2), (4, 20),
                               (16, 0), (17, 16), (18, 17), (19, 18), (21, 22),
                               (22, 7), (23, 24), (24, 11)],
                        center_node=20)
+
+BerkeleyMHAD = GraphLayout(edges=[(1, 0), (2, 1), (3, 2), (4, 3), (5, 4),
+                                  (4, 6), (6, 7), (7, 8), (4, 9), (9, 10),
+                                  (10, 11), (0, 12), (12, 13), (13, 14),
+                                  (14, 15), (0, 16), (16, 17), (17, 18),
+                                  (18, 19)],
+                           center_node=4)
+
+Body25 = GraphLayout(edges=[(0, 1), (1, 2), (2, 3), (3, 4), (1, 5), (5, 6),
+                            (6, 7), (1, 8), (8, 9), (9, 10), (10, 11),
+                            (11, 22), (22, 23), (11, 24), (8, 12), (12, 13),
+                            (13, 14), (14, 19), (19, 20), (14, 21), (0, 15),
+                            (15, 17), (0, 16), (16, 18)],
+                     center_node=1)
+
+JHMDB = GraphLayout(edges=[(0, 1), (0, 2), (0, 3), (0, 4), (3, 5), (4, 6),
+                           (3, 7), (4, 8), (5, 9), (6, 10), (7, 11), (8, 12),
+                           (9, 13), (10, 14)],
+                    center_node=0)
+
+
+def get_layout_by_datasetname(dataset_name: str) -> GraphLayout:
+    """
+    Select graph layout based on DatasetLoader class name.
+
+    Provides an easy selector of graph layout object based on the dataset name
+    provided for the DatasetLoader module. Raises an exception if the dataset
+    name is not one of those supported.
+
+    Parameters
+    ----------
+    dataset_name : str
+        Name of the datset used as passed in as -ds/--dataset command line arg
+
+    Returns
+    -------
+    graph_layout : GraphLayout object
+        The appropriate pre-defined GraphLayout object
+    """
+    if (dataset_name == "NTURGBD" or dataset_name == "ChaLearn2013"):
+        return KinectV2
+    elif dataset_name == "Skeletics152":
+        return Body25
+    elif dataset_name == "BerkeleyMHAD":
+        return BerkeleyMHAD
+    elif dataset_name == "JHMDB":
+        return JHMDB
+    else:
+        raise Exception("Unknown dataset name.")
