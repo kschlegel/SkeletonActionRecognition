@@ -60,6 +60,7 @@ class ActionRecognitionModule(pl.LightningModule):
 
     def __init__(self,
                  model: torch.nn.Module,
+                 num_classes: int,
                  lr: float = DEFAULT_LR,
                  class_labels: List[str] = None,
                  mAP: bool = False,
@@ -70,6 +71,8 @@ class ActionRecognitionModule(pl.LightningModule):
         """
         model : torch.nn.Module object
             The model to train
+        num_classes : int
+            Number of action classes in the data
         lr : float, optional (default is defined at the top of the file)
             Learning rate
         class_labels : list of str, optional (default is None)
@@ -111,17 +114,15 @@ class ActionRecognitionModule(pl.LightningModule):
             self.train_accuracy = Accuracy()
         self.mAP: Optional[AveragePrecision] = None
         if mAP:
-            self.mAP = AveragePrecision(num_classes=kwargs["num_classes"])
+            self.mAP = AveragePrecision(num_classes=num_classes)
             if training_metrics:
-                self.train_mAP = AveragePrecision(
-                    num_classes=kwargs["num_classes"])
+                self.train_mAP = AveragePrecision(num_classes=num_classes)
 
         self.confusion_matrix: Optional[ConfusionMatrix] = None
         if confusion_matrix:
-            self.confusion_matrix = ConfusionMatrix(
-                num_classes=kwargs["num_classes"],
-                compute_on_step=False,
-                normalize="true")
+            self.confusion_matrix = ConfusionMatrix(num_classes=num_classes,
+                                                    compute_on_step=False,
+                                                    normalize="true")
             self._class_labels = class_labels
 
         self._parameter_histograms = parameter_histograms

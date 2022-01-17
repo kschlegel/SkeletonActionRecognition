@@ -87,7 +87,7 @@ class GraphOptions:
 ST_GCN_Options = partial(GraphOptions,
                          max_neighbour_distance=1,
                          dilation=1,
-                         include_self_loops="False",
+                         include_self_loops=False,
                          normalisation_method="mean_pooling",
                          normalise_first=True,
                          learnable_adjacency=False,

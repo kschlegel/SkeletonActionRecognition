@@ -105,7 +105,7 @@ class SkeletonDataModule(pl.LightningDataModule):
         super().__init__()
         if kwargs["data_files"] is None and kwargs["dataset"] is None:
             raise Exception(
-                "At least on of --dataset and --data_files must be specified")
+                "At least one of --dataset and --data_files must be specified")
 
         # Declare vars to hold basic info about data. If using DatasetLoader
         # everything can be deduced from there and we can initialise here in
@@ -122,19 +122,18 @@ class SkeletonDataModule(pl.LightningDataModule):
         if kwargs["dataset"] is not None:
             dataset_module = self._get_datasetloader_module(kwargs["dataset"])
             self._data_loader = dataset_module(**kwargs)
+            if (self._data_loader.has_col("keypoints3D")
+                    and self._data_loader.has_col("keypoints2D")):
+                self.keypoint_dim = kwargs["keypoint_dim"]
+            elif self._data_loader.has_col("keypoints3D"):
+                self.keypoint_dim = 3
+            elif self._data_loader.has_col("keypoints2D"):
+                self.keypoint_dim = 2
+            else:
+                raise Exception("Dataset does not have valid keypoints")
+            self._data_loader.set_cols(
+                "keypoints{}D".format(self.keypoint_dim), "action")
             if kwargs["data_files"] is None:
-                if (self._data_loader.has_col("keypoints3D")
-                        and self._data_loader.has_col("keypoints2D")):
-                    self.keypoint_dim = kwargs["keypoint_dim"]
-                elif self._data_loader.has_col("keypoints3D"):
-                    self.keypoint_dim = 3
-                elif self._data_loader.has_col("keypoints2D"):
-                    self.keypoint_dim = 2
-                else:
-                    raise Exception("Dataset does not have valid keypoints")
-                self._data_loader.set_cols(
-                    "keypoints{}D".format(self.keypoint_dim), "action")
-
                 self._trainingset = self._data_loader.trainingset
                 self._testset = self._data_loader.testset
             else:
