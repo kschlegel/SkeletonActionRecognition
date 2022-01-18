@@ -51,6 +51,10 @@ class ActionRecognitionModule(pl.LightningModule):
             '--training_metrics',
             action="store_true",
             help="Compute and log metrics also for training steps.")
+        parser.add_argument('--metric_maxima',
+                            action="store_true",
+                            help="Log the maximum and maximal 5-epoch average "
+                            "of each test metric")
         parser.add_argument(
             '--parameter_histograms',
             action="store_true",
@@ -66,6 +70,7 @@ class ActionRecognitionModule(pl.LightningModule):
                  mAP: bool = False,
                  confusion_matrix: bool = False,
                  training_metrics: bool = False,
+                 metric_maxima: bool = False,
                  parameter_histograms: bool = False,
                  **kwargs):
         """
@@ -83,6 +88,8 @@ class ActionRecognitionModule(pl.LightningModule):
             If True, generate confusion matrices for validation steps
         training_metrics : bool, optional (default is False)
             If True, compute metrics also for training steps
+        metric_maxima : bool, optional (default is False)
+            Log the maximum and maximal 5-epoch average of each test metric
         parameter_histograms : bool, optional (default is False)
             If True, generate histograms of parameter norm and gradient norms
             after training steps
@@ -110,11 +117,20 @@ class ActionRecognitionModule(pl.LightningModule):
 
         self.training_metrics = training_metrics
         self.accuracy = Accuracy()
+        if metric_maxima:
+            self._metric_lists = {"acc": []}
+            self._max_metrics = {"acc": 0, "mean_acc": 0}
+        else:
+            self._max_metrics = None
         if training_metrics:
             self.train_accuracy = Accuracy()
         self.mAP: Optional[AveragePrecision] = None
         if mAP:
             self.mAP = AveragePrecision(num_classes=num_classes)
+            if metric_maxima:
+                self._metric_lists["mAP"] = []
+                self._max_metrics["mAP"] = 0
+                self._max_metrics["mean_mAP"] = 0
             if training_metrics:
                 self.train_mAP = AveragePrecision(num_classes=num_classes)
 
@@ -218,6 +234,24 @@ class ActionRecognitionModule(pl.LightningModule):
                             xticks_rotation=xticks_rotation)
             self._tb_logger.experiment.add_figure(
                 "Confusion matrix", fig, global_step=self.current_epoch)
+
+        if self._max_metrics is not None:
+            metrics = {"acc": self.accuracy.compute()}
+            if self.mAP is not None:
+                metrics["mAP"] = self.mAP.compute()
+
+            for m in metrics.keys():
+                self._metric_lists[m].append(metrics[m])
+                if len(self._metric_lists[m]) > 5:
+                    self._metric_lists[m].pop(0)
+                if metrics[m] > self._max_metrics[m]:
+                    self._max_metrics[m] = metrics[m]
+                mean = torch.mean(torch.tensor(self._metric_lists[m]))
+                if mean > self._max_metrics["mean_" + m]:
+                    self._max_metrics["mean_" + m] = mean
+                self.log('metrics/max_mean_' + m,
+                         self._max_metrics["mean_" + m])
+                self.log('metrics/max_' + m, self._max_metrics[m])
 
     # ##### OPTIMIZER #####
 
