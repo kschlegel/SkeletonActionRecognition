@@ -19,26 +19,29 @@ SUPPORTED_DATASETS = [
 
 class SkeletonDataModule(pl.LightningDataModule):
     """
-    LightningDataModule wrapper for SkeletonDataset.
+    LightningDataModule wrapper for (Skeleton)Dataset class.
 
     Supports loading data from file or via DatasetLoader package. Can save a
     DatasetLoader generated dataset to local file for faster loading on
     subsequent runs (useful e.g. in combination with subsetting of NTURGBD
     provided by the DatasetLoader package
     """
-    @staticmethod
-    def add_data_specific_args(parent_parser: ParserType,
+    DatasetClass = SkeletonDataset
+
+    @classmethod
+    def add_data_specific_args(cls,
+                               parent_parser: ParserType,
                                default_batch_size: int = 32,
                                default_target_len: int = 100) -> ParserType:
         """
-        Adds data loading specific command line args (+SkeletonDataset args)
+        Adds data loading specific command line args (+DatasetClass args)
 
         Parameters
         ----------
         default_batch_size : int, optional (default is 32)
             Default batch size
         default_target_len : int, optional (default is 100)
-            Default target len for SkeletonDataset
+            Default target len for Dataset
         """
         if isinstance(parent_parser, WithDefaultsWrapper):
             local_parser = parent_parser
@@ -71,7 +74,7 @@ class SkeletonDataModule(pl.LightningDataModule):
                             help="Number of workers to use for dataloaders.")
 
         # Adds args for adjusting sequence length and number of persons
-        SkeletonDataset.add_argparse_args(
+        cls.DatasetClass.add_argparse_args(
             parser, default_target_len=default_target_len)
         parser.add_argument(
             '--keypoint_dim',
@@ -147,30 +150,26 @@ class SkeletonDataModule(pl.LightningDataModule):
             self.num_actions = len(self._data_loader.actions)
             self.class_labels = self._data_loader.actions
 
+        self._kwargs = kwargs  # to pass cmd line args into dataset class
         self._batch_size = kwargs["batch_size"]
-        self._adjust_len = kwargs["adjust_len"]
-        self._target_len = kwargs["target_len"]
         self._num_workers = kwargs["num_workers"]
 
     def setup(self, stage=None):
         """
-        Create SkeletonDataset objects.
+        Create dataset objects.
 
         If no DatasetLoader is used structural information about the data is
         not known until loading so is initialised here.
         """
-        self._trainingdata = SkeletonDataset(data=self._trainingset,
-                                             adjust_len=self._adjust_len,
-                                             target_len=self._target_len)
+        self._trainingdata = self.DatasetClass(data=self._trainingset,
+                                               **self._kwargs)
         if self.keypoint_dim is None:
             self.keypoint_dim = self._trainingdata.get_keypoint_dim()
         if self.num_keypoints is None:
             self.num_keypoints = self._trainingdata.get_num_keypoints()
         if self.num_actions is None:
             self.num_actions = self._trainingdata.get_num_actions()
-        self._testdata = SkeletonDataset(data=self._testset,
-                                         adjust_len=self._adjust_len,
-                                         target_len=self._target_len)
+        self._testdata = self.DatasetClass(data=self._testset, **self._kwargs)
 
     def train_dataloader(self):
         train_loader = DataLoader(self._trainingdata,
@@ -219,6 +218,8 @@ class SkeletonDataModule(pl.LightningDataModule):
             will automatically be suffixed by the part of the data saved
             (_training or _test) and the filetype (.npy)
         """
+        if not os.path.exists(os.path.dirname(data_files)):
+            os.mkdir(os.path.dirname(data_files))
         for datapart in ("training", "test"):
             filename = data_files + "_" + datapart + ".npy"
             if not os.path.exists(filename):

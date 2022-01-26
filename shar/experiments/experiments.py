@@ -38,6 +38,10 @@ class Experiments:
         exp.run()
 
     """
+
+    DataModuleClass = SkeletonDataModule
+    TrainingModuleClass = ActionRecognitionModule
+
     def __init__(self,
                  model_dirs: Optional[Union[str, List[str]]] = None) -> None:
         """
@@ -106,8 +110,8 @@ class Experiments:
                             help="If given seeds (all) random number "
                             "generators with the given seed.")
 
-        parser = SkeletonDataModule.add_data_specific_args(parser)
-        parser = ActionRecognitionModule.add_model_specific_args(parser)
+        parser = self.DataModuleClass.add_data_specific_args(parser)
+        parser = self.TrainingModuleClass.add_model_specific_args(parser)
         # -------
         model_name: Optional[str] = None
         for i, arg in enumerate(sys.argv):
@@ -135,7 +139,7 @@ class Experiments:
             pl.utilities.seed.seed_everything(seed=self._hparams.random_seed,
                                               workers=True)
 
-        data = SkeletonDataModule(**hparams_dict)
+        data = self.DataModuleClass(**hparams_dict)
         if data.keypoint_dim is None or data.num_keypoints is None:
             # This happens when we load from file without datasetloader
             # specified. We then don't have apriori info about the data
@@ -151,7 +155,7 @@ class Experiments:
         else:
             raise Exception("Invalid model name.")
 
-        training_module = ActionRecognitionModule(model=model, **hparams_dict)
+        training_module = self.TrainingModuleClass(model=model, **hparams_dict)
 
         experiment_name = "lightning_logs"
         checkpoint_path = "checkpoints"

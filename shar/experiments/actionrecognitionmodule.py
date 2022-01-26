@@ -160,8 +160,15 @@ class ActionRecognitionModule(pl.LightningModule):
 
     def on_train_start(self):
         metrics = {"metrics/acc": 0}
+        if self._max_metrics is not None:
+            metrics.update({"metrics/max_acc": 0, "metrics/max_mean_acc": 0})
         if self.mAP is not None:
             metrics["metrics/mAP"] = 0
+            if self._max_metrics is not None:
+                metrics.update({
+                    "metrics/max_mAP": 0,
+                    "metrics/max_mean_mAP": 0
+                })
         self._tb_logger.log_hyperparams(self.hparams, metrics)
 
     def training_step(self, batch, batch_idx):
@@ -204,16 +211,9 @@ class ActionRecognitionModule(pl.LightningModule):
         self.log("loss/val", loss, on_epoch=True, on_step=False)
 
         predictions = torch.softmax(predictions, dim=1)
-        self.log('metrics/acc',
-                 self.accuracy(predictions, labels),
-                 on_step=False,
-                 on_epoch=True,
-                 prog_bar=True)
+        self.accuracy(predictions, labels)
         if self.mAP is not None:
-            self.log('metrics/mAP',
-                     self.mAP(predictions, labels),
-                     on_step=False,
-                     on_epoch=True)
+            self.mAP(predictions, labels)
         if self.confusion_matrix is not None:
             self.confusion_matrix(predictions, labels)
 
@@ -235,11 +235,15 @@ class ActionRecognitionModule(pl.LightningModule):
             self._tb_logger.experiment.add_figure(
                 "Confusion matrix", fig, global_step=self.current_epoch)
 
-        if self._max_metrics is not None:
-            metrics = {"acc": self.accuracy.compute()}
-            if self.mAP is not None:
-                metrics["mAP"] = self.mAP.compute()
+        metrics = {"acc": self.accuracy.compute()}
+        self.log("metrics/acc", metrics["acc"], prog_bar=True)
+        self.accuracy.reset()
+        if self.mAP is not None:
+            metrics["mAP"] = self.mAP.compute()
+            self.log("metrics/mAP", metrics["mAP"])
+            self.mAP.reset()
 
+        if self._max_metrics is not None:
             for m in metrics.keys():
                 self._metric_lists[m].append(metrics[m])
                 if len(self._metric_lists[m]) > 5:
