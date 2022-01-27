@@ -218,8 +218,9 @@ class SkeletonDataModule(pl.LightningDataModule):
             will automatically be suffixed by the part of the data saved
             (_training or _test) and the filetype (.npy)
         """
-        if not os.path.exists(os.path.dirname(data_files)):
-            os.mkdir(os.path.dirname(data_files))
+        dirname = os.path.dirname(data_files)
+        if dirname != "" and not os.path.exists(dirname):
+            os.mkdir(dirname)
         for datapart in ("training", "test"):
             filename = data_files + "_" + datapart + ".npy"
             if not os.path.exists(filename):

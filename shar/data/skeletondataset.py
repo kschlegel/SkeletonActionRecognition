@@ -164,59 +164,63 @@ class SkeletonDataset(Dataset):
         # keypoints = (person, frame, landmark, coordinates)
 
         # optionally adjust length
-        if self._adjust_len is None:
-            pass
-        elif self._adjust_len == "interpolate":
-            # Linearly interpolate the frame dimension
-            shape = (keypoints.shape[2], self._target_len)
-            rescaled = []
-            for i in range(keypoints.shape[0]):
-                rescaled.append(
-                    cv2.resize(keypoints[i],
-                               shape,
-                               interpolation=cv2.INTER_LINEAR))
-            keypoints = np.stack(rescaled, axis=0)
-        elif self._adjust_len == "loop":
-            # Loop the frame dimension, repeating the sequence as many times as
-            # necessary
-            padding_size = self._target_len - keypoints.shape[1]
-            full_loops = padding_size // keypoints.shape[1]
-            if full_loops > 0:
-                padding_size -= full_loops * keypoints.shape[1]
-                padding = np.repeat(keypoints, full_loops, axis=1)
-                keypoints = np.concatenate((keypoints, padding), axis=1)
-            keypoints = np.concatenate(
-                (keypoints, keypoints[:, :padding_size]), axis=1)
-        elif self._adjust_len.startswith("pad"):
-            # Pad the sequence at the end with zeros or the last frame
-            padding_size = self._target_len - keypoints.shape[1]
-            if self._adjust_len.endswith("zero"):
-                padding = np.zeros(
-                    (keypoints.shape[0], padding_size) + keypoints.shape[2:],
-                    dtype=keypoints.dtype)
-            elif self._adjust_len.endswith("last"):
-                padding = np.expand_dims(keypoints[:, -1], 1)
-                padding = np.repeat(padding, padding_size, axis=1)
-            keypoints = np.concatenate((keypoints, padding), axis=1)
+        if self._adjust_len is not None:
+            keypoints = self._adjust_seq_len(keypoints)
 
         # reorder for PyTorch channels first convention
         #    -> new order: (person, coordinates, frame, landmark)
         keypoints = keypoints.transpose((0, 3, 1, 2))
 
         # adjust person dimension if need be
-        if not self._keep_person_dim and self._num_persons == 1:
-            keypoints = keypoints[0]
-        elif keypoints.shape[0] < self._num_persons:
-            keypoints = np.concatenate(
-                (keypoints,
-                 np.zeros((self._num_persons - keypoints.shape[0], ) +
-                          keypoints.shape[1:],
-                          dtype=keypoints.dtype)),
-                axis=0)
-        elif keypoints.shape[0] > self._num_persons:
-            keypoints = keypoints[:self._num_persons]
+        keypoints = self._adjust_person_dimension(keypoints)
 
         return np.ascontiguousarray(keypoints, dtype=np.float32), action
+
+    def _adjust_person_dimension(self, data):
+        if not self._keep_person_dim and self._num_persons == 1:
+            data = data[0]
+        elif data.shape[0] < self._num_persons:
+            data = np.concatenate(
+                (data,
+                 np.zeros(
+                     (self._num_persons - data.shape[0], ) + data.shape[1:],
+                     dtype=data.dtype)),
+                axis=0)
+        elif data.shape[0] > self._num_persons:
+            data = data[:self._num_persons]
+        return data
+
+    def _adjust_seq_len(self, data):
+        if self._adjust_len == "interpolate":
+            # Linearly interpolate the frame dimension
+            shape = (data.shape[2], self._target_len)
+            rescaled = []
+            for i in range(data.shape[0]):
+                rescaled.append(
+                    cv2.resize(data[i], shape, interpolation=cv2.INTER_LINEAR))
+            data = np.stack(rescaled, axis=0)
+        elif self._adjust_len == "loop":
+            # Loop the frame dimension, repeating the sequence as many times as
+            # necessary
+            padding_size = self._target_len - data.shape[1]
+            full_loops = padding_size // data.shape[1]
+            if full_loops > 0:
+                padding_size -= full_loops * data.shape[1]
+                padding = np.repeat(data, full_loops, axis=1)
+                data = np.concatenate((data, padding), axis=1)
+            data = np.concatenate((data, data[:, :padding_size]), axis=1)
+        elif self._adjust_len.startswith("pad"):
+            # Pad the sequence at the end with zeros or the last frame
+            padding_size = self._target_len - data.shape[1]
+            if self._adjust_len.endswith("zero"):
+                padding = np.zeros(
+                    (data.shape[0], padding_size) + data.shape[2:],
+                    dtype=data.dtype)
+            elif self._adjust_len.endswith("last"):
+                padding = np.expand_dims(data[:, -1], 1)
+                padding = np.repeat(padding, padding_size, axis=1)
+            data = np.concatenate((data, padding), axis=1)
+        return data
 
     def get_num_keypoints(self) -> int:
         """
