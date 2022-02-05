@@ -1,4 +1,5 @@
 from typing import List, Optional
+import time
 
 import torch
 import pytorch_lightning as pl
@@ -59,6 +60,9 @@ class ActionRecognitionModule(pl.LightningModule):
             '--parameter_histograms',
             action="store_true",
             help="Plot histograms of all parameters and their gradients")
+        parser.add_argument('--avg_training_time',
+                            action="store_true",
+                            help="Log average per epoch training time")
 
         return parent_parser
 
@@ -72,6 +76,7 @@ class ActionRecognitionModule(pl.LightningModule):
                  training_metrics: bool = False,
                  metric_maxima: bool = False,
                  parameter_histograms: bool = False,
+                 avg_training_time: bool = False,
                  **kwargs):
         """
         model : torch.nn.Module object
@@ -93,6 +98,8 @@ class ActionRecognitionModule(pl.LightningModule):
         parameter_histograms : bool, optional (default is False)
             If True, generate histograms of parameter norm and gradient norms
             after training steps
+        avg_training_time : bool, optional (default is False)
+            If True, logs the avg per epoch training time
         kwargs : dict
             Pass the full dictionary of command line args into here.
         """
@@ -143,6 +150,11 @@ class ActionRecognitionModule(pl.LightningModule):
 
         self._parameter_histograms = parameter_histograms
 
+        if avg_training_time:
+            self._epoch_training_times = []
+        else:
+            self._epoch_training_times = None
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
         predictions = self.model(x)
         predictions = torch.argmax(predictions, dim=1)
@@ -159,7 +171,11 @@ class ActionRecognitionModule(pl.LightningModule):
     # ##### TRAINING #####
 
     def on_train_start(self):
-        metrics = {"metrics/acc": 0}
+        if self._epoch_training_times is not None:
+            metrics = {"avg_training_time": 0}
+        else:
+            metrics = {}
+        metrics.update({"metrics/acc": 0})
         if self._max_metrics is not None:
             metrics.update({"metrics/max_acc": 0, "metrics/max_mean_acc": 0})
         if self.mAP is not None:
@@ -200,6 +216,19 @@ class ActionRecognitionModule(pl.LightningModule):
                 if param.requires_grad:
                     self.logger.experiment.add_histogram(
                         f"{name}_grad", param.grad, global_step)
+
+    def on_train_epoch_start(self):
+        if self._epoch_training_times is not None:
+            self._epoch_start = time.perf_counter()
+
+    def on_train_epoch_end(self):
+        if self._epoch_training_times is not None:
+            self._epoch_training_times.append(time.perf_counter() -
+                                              self._epoch_start)
+            self.log(
+                "avg_training_time",
+                sum(self._epoch_training_times) /
+                len(self._epoch_training_times))
 
     # ##### VALIDATION #####
 

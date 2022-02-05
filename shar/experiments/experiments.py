@@ -37,6 +37,10 @@ class Experiments:
         exp = Experiments(PATH_TO_YOUR_MODELS)
         exp.run()
 
+    If the standard SkeletonDataModule or ActionRecognitionModule classes are
+    not sufficient, one can derive from these classes to add additional
+    functionality and set the static variable of this class, DataModuleClass or
+    TrainingModuleClass respectively, to use the derived class for experiments.
     """
 
     DataModuleClass = SkeletonDataModule
