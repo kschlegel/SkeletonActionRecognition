@@ -1,4 +1,5 @@
 from typing import List, Optional
+import json
 
 import torch
 import pytorch_lightning as pl
@@ -243,19 +244,20 @@ class ActionRecognitionModule(pl.LightningModule):
             self.log("metrics/mAP", metrics["mAP"])
             self.mAP.reset()
 
-        if self._max_metrics is not None:
+        if self._max_metrics is not None and not self.trainer.sanity_checking:
             for m in metrics.keys():
                 self._metric_lists[m].append(metrics[m])
                 if len(self._metric_lists[m]) > 5:
                     self._metric_lists[m].pop(0)
                 if metrics[m] > self._max_metrics[m]:
                     self._max_metrics[m] = metrics[m]
-                mean = torch.mean(torch.tensor(self._metric_lists[m]))
-                if mean > self._max_metrics["mean_" + m]:
-                    self._max_metrics["mean_" + m] = mean
-                self.log('metrics/max_mean_' + m,
-                         self._max_metrics["mean_" + m])
                 self.log('metrics/max_' + m, self._max_metrics[m])
+                if len(self._metric_lists[m]) == 5:
+                    mean = torch.mean(torch.tensor(self._metric_lists[m]))
+                    if mean > self._max_metrics["mean_" + m]:
+                        self._max_metrics["mean_" + m] = mean
+                    self.log('metrics/max_mean_' + m,
+                             self._max_metrics["mean_" + m])
 
     # ##### OPTIMIZER #####
 

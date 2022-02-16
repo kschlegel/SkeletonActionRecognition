@@ -50,9 +50,10 @@ class AGCN(torch.nn.Module):
                 data_dependent_adjacency=not no_data_dependent_adjacency)
         }
 
-        self.data_batch_norm = ChannelwiseBatchNorm(in_channels=3,
-                                                    landmarks=25)
-        self.person2batch = Person2Batch(person_dimension=1, num_persons=2)
+        self.data_batch_norm = ChannelwiseBatchNorm(in_channels=keypoint_dim,
+                                                    landmarks=num_keypoints)
+        self.person2batch = Person2Batch(person_dimension=1,
+                                         num_persons=num_persons)
 
         temporal_kernel_size = 9
         # Define output_channels for all layers, first item is the input dim of
