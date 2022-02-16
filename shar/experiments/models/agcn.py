@@ -28,6 +28,13 @@ class AGCN(torch.nn.Module):
             help="Number of GCN layers to use. This allows to train more "
             "lightweight models than the original paper (layers=10 is as "
             "presented in the paper.)")
+        parser.add_argument(
+            '--graph_layout',
+            type=str,
+            help="Select a graph layout to use. When using the DatasetLoader "
+            "package to load the data this is inferred automaticaly and this "
+            "option is ignored. Options are the same as the dataset command "
+            "line options.")
         return parent_parser
 
     def __init__(self,
@@ -38,12 +45,18 @@ class AGCN(torch.nn.Module):
                  no_learnable_adjacency=False,
                  no_data_dependent_adjacency=False,
                  layers=DEFAULT_NUM_LAYERS,
+                 graph_layout=None,
                  **kwargs):
         super().__init__()
 
+        if kwargs["dataset"] is not None:
+            graph_layout = get_layout_by_datasetname(kwargs["dataset"])
+        else:
+            graph_layout = get_layout_by_datasetname(graph_layout)
+
         graph = {
             "graph_layout":
-            get_layout_by_datasetname(kwargs["dataset"]),
+            graph_layout,
             "graph_options":
             AGCN_Options(
                 learnable_adjacency=not no_learnable_adjacency,

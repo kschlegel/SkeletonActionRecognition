@@ -32,6 +32,13 @@ class GCNLogSigRNN(torch.nn.Module):
                             default=DEFAULT_NUM_LAYERS,
                             choices=[1, 2],
                             help="Number of GCN+LogSigRNN blocks.")
+        parser.add_argument(
+            '--graph_layout',
+            type=str,
+            help="Select a graph layout to use. When using the DatasetLoader "
+            "package to load the data this is inferred automaticaly and this "
+            "option is ignored. Options are the same as the dataset command "
+            "line options.")
         return parent_parser
 
     def __init__(self,
@@ -42,6 +49,7 @@ class GCNLogSigRNN(torch.nn.Module):
                  logsig_lvl=DEFAULT_LOGSIG_LVL,
                  max_neighbour_distance=DEFAULT_MAX_NEIGHBOUR_DISTANCE,
                  layers=DEFAULT_NUM_LAYERS,
+                 graph_layout=None,
                  **kwargs):
         super().__init__()
 
@@ -50,9 +58,14 @@ class GCNLogSigRNN(torch.nn.Module):
         self.person2batch = Person2Batch(person_dimension=1,
                                          num_persons=num_persons)
 
+        if kwargs["dataset"] is not None:
+            graph_layout = get_layout_by_datasetname(kwargs["dataset"])
+        else:
+            graph_layout = get_layout_by_datasetname(graph_layout)
+
         graph = {
             "graph_layout":
-            get_layout_by_datasetname(kwargs["dataset"]),
+            graph_layout,
             "graph_options":
             MS_GCN_Options(max_neighbour_distance=max_neighbour_distance)
         }

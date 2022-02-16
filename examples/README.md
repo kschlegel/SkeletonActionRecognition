@@ -57,6 +57,8 @@ On top of the PyTorch Lightning options the following options are supported:
 - `--training_metrics` to also log the metrics for each training steps
 - `--confusion_matrix` to log confusion matrices of each validation step to tensorboard
 - `--parameter_histograms` to log histograms of parameter and gradient norms at the end of each training step
+- `--metric_maxima` Log the absolute maximum and the maximal 5 epoch average achieved for each metric on the validation set
+- `--avg_training_time` Log the avg per epoch training time as a metric
 
 ### Data options
 - `-ds/--dataset` allows to select datasets using the [DatasetLoader](https://github.com/kschlegel/DatasetLoader) package and needs to be used in conjunction with the `-p/--data_path` option specifying where the dataset is located. Additionally the DatasetLoader provides `--split` to select a dataset train/val split if there are several available. For some datasets the DatasetLoader provides further options, e.g. taking smaller subsets of NTURGBD

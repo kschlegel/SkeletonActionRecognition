@@ -31,6 +31,14 @@ class STGCN(torch.nn.Module):
             help="Number of GCN layers to use. This allows to train more "
             "lightweight models than the original paper (layers=10 is as "
             "presented in the paper.)")
+        parser.add_argument(
+            '--graph_layout',
+            type=str,
+            help="Select a graph layout to use. When using the DatasetLoader "
+            "package to load the data this is inferred automaticaly and this "
+            "option is ignored. Options are the same as the dataset command "
+            "line options.")
+
         return parent_parser
 
     def __init__(self,
@@ -41,12 +49,18 @@ class STGCN(torch.nn.Module):
                  partition_strategy=DEFAULT_PARTITION_STRATEGY,
                  edge_importance_weighting=False,
                  layers=DEFAULT_NUM_LAYERS,
+                 graph_layout=None,
                  **kwargs):
         super().__init__()
 
+        if kwargs["dataset"] is not None:
+            graph_layout = get_layout_by_datasetname(kwargs["dataset"])
+        else:
+            graph_layout = get_layout_by_datasetname(graph_layout)
+
         graph = {
             "graph_layout":
-            get_layout_by_datasetname(kwargs["dataset"]),
+            graph_layout,
             "graph_options":
             ST_GCN_Options(partition_strategy=partition_strategy,
                            edge_importance_weighting=edge_importance_weighting)
@@ -100,5 +114,4 @@ class STGCN(torch.nn.Module):
         # Predict
         x = self.fully_connected(x)
         x = x.view(x.size(0), -1)
-
         return x

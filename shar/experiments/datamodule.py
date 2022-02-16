@@ -25,6 +25,10 @@ class SkeletonDataModule(pl.LightningDataModule):
     DatasetLoader generated dataset to local file for faster loading on
     subsequent runs (useful e.g. in combination with subsetting of NTURGBD
     provided by the DatasetLoader package
+
+    If the standard SkeletonDataset class is not sufficient, one can derive a
+    new class from it and set the static variable of this class DatasetClass to
+    use this dataset class for experiments.
     """
     DatasetClass = SkeletonDataset
 
