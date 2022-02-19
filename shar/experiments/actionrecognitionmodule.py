@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 import time
 
 import torch
@@ -125,10 +125,10 @@ class ActionRecognitionModule(pl.LightningModule):
         self.training_metrics = training_metrics
         self.accuracy = Accuracy()
         if metric_maxima:
-            self._metric_lists = {"acc": []}
-            self._max_metrics = {"acc": 0, "mean_acc": 0}
+            self._metric_lists: Dict[str, List[torch.Tensor]] = {"acc": []}
+            self._max_metrics: Dict[str, int] = {"acc": 0, "mean_acc": 0}
         else:
-            self._max_metrics = None
+            self._max_metrics = {}
         if training_metrics:
             self.train_accuracy = Accuracy()
         self.mAP: Optional[AveragePrecision] = None
@@ -151,7 +151,7 @@ class ActionRecognitionModule(pl.LightningModule):
         self._parameter_histograms = parameter_histograms
 
         if avg_training_time:
-            self._epoch_training_times = []
+            self._epoch_training_times: Optional[List[float]] = []
         else:
             self._epoch_training_times = None
 
@@ -176,11 +176,11 @@ class ActionRecognitionModule(pl.LightningModule):
         else:
             metrics = {}
         metrics.update({"metrics/acc": 0})
-        if self._max_metrics is not None:
+        if len(self._max_metrics) > 0:
             metrics.update({"metrics/max_acc": 0, "metrics/max_mean_acc": 0})
         if self.mAP is not None:
             metrics["metrics/mAP"] = 0
-            if self._max_metrics is not None:
+            if len(self._max_metrics) > 0:
                 metrics.update({
                     "metrics/max_mAP": 0,
                     "metrics/max_mean_mAP": 0
@@ -272,7 +272,7 @@ class ActionRecognitionModule(pl.LightningModule):
             self.log("metrics/mAP", metrics["mAP"])
             self.mAP.reset()
 
-        if self._max_metrics is not None:
+        if len(self._max_metrics) > 0:
             for m in metrics.keys():
                 self._metric_lists[m].append(metrics[m])
                 if len(self._metric_lists[m]) > 5:

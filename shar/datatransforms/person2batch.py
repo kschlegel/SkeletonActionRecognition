@@ -37,13 +37,9 @@ class Person2Batch(torch.nn.Module):
                 list(i for i in range(1, 5) if i != person_dimension))
         self.num_persons = num_persons
 
-        self.aggregation: Callable
-        if aggregation == "mean":
-            self.aggregation = torch.mean
-        elif aggregation == "max":
-            self.aggregation = torch.max
-        else:
+        if aggregation not in ("mean", "max"):
             raise ValueError("Invalid aggregation method.")
+        self._aggregation = aggregation
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -99,5 +95,9 @@ class Person2Batch(torch.nn.Module):
         """
         s = x.size()
         x = x.view((s[0] // self.num_persons, self.num_persons) + s[1:])
-        x = self.aggregation(x, dim=1)
-        return x
+        if self._aggregation == "mean":
+            return torch.mean(x, dim=1)
+        elif self._aggregation == "max":
+            return torch.max(x, dim=1)[0]
+        else:
+            raise ValueError("Invalid aggregation method.")
